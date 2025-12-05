@@ -1,0 +1,203 @@
+from client import ComicGrowlClient
+import typer, pathlib, time
+from urllib.parse import urlsplit
+from rich.console import Console
+from rich.table import Table, Column
+from rich.progress import track
+
+app = typer.Typer(rich_markup_mode="markdown")
+console = Console()
+client = ComicGrowlClient()
+
+@app.command()
+def search(keyword: str):
+    results = client.search(keyword)
+    table = Table(
+        "Series ID", 
+        Column("Title", overflow="fold"), 
+        "Authors", 
+        title="Search Results", 
+        show_lines=True
+    )
+    for result in results:
+        table.add_row(
+            urlsplit(result.href).path.rstrip("/").split("/")[-1], 
+            result.title, 
+            "\n".join(result.author)
+        )
+    console.print(table)
+
+def load_cookies(cookies: str = ""):
+    global client
+    if cookies: 
+        cookies = pathlib.Path(cookies)
+        if cookies.exists():
+            client.update_cookies_from_CookieEditorJson(cookies)
+            console.print(f"[green]Loaded cookies from '{cookies}'[/]")
+        else: 
+            console.print(f"[red]Cookies file not found: '{cookies}'[/]")
+            typer.Abort()
+
+@app.command()
+def episodes(
+    series_id: str, 
+    sort: int = typer.Option(2, help="1: Newest first, 2: Oldest first"), 
+    page: int = typer.Option(0, help="Page number when too many episodes to show against the limit"), 
+    limit: int = typer.Option(50, help="Limit of episodes to show"), 
+    cookies: str = typer.Option("", help="Path to your cookies.json, should use Cookie-Editor JSON format"), 
+    bought_only: bool = typer.Option(True, help="Only show bought episodes"),
+):
+    """
+    Show episodes in target series
+
+    Series ID can be found by using `search` command
+    """
+    load_cookies(cookies)
+    
+    paging_list = client.series_pagingList(
+        series_id=series_id,
+        sort=sort, 
+        page=page, 
+        limit=limit
+    )
+    table = Table(
+        "Episode ID", 
+        Column("Title", overflow="fold"), 
+        "Symbols", 
+        "Update Date", 
+        title="Paging List", 
+        show_lines=True
+    )
+    for episode in paging_list:
+        if bought_only and not episode.href: continue
+        table.add_row(
+            urlsplit(episode.href).path.rstrip("/").split("/")[-1] if episode.href else "-", 
+            episode.title, 
+            ", ".join(episode.symbols), 
+            episode.update_date, 
+        )
+    console.print(table)
+
+@app.command("detailed-episodes")
+def detailed_episodes(episode_id: str):
+    """
+    Show detailed info of target episode
+    """
+    comici_viewer_id = client.episodes(episode_id=episode_id)
+    episode_info = client.book_episodeInfo(comici_viewer_id)
+
+    table = Table(
+        "Comici Viewer ID", 
+        Column("Title", overflow="fold"), 
+        Column("Description", overflow="fold"), 
+        "Pages", 
+        "No.", 
+        "Publish Date", 
+        "End Date", 
+        title="Episode Info", 
+        show_lines=True
+    )
+    for episode in episode_info:
+        publish_date = episode.publish_date.astimezone().strftime("%Y/%m/%d %H:%M:%S")
+        end_date = episode.end_date.astimezone().strftime("%Y/%m/%d %H:%M:%S") if episode.end_date.year < 9999 else "N/A"
+        table.add_row(
+            episode._id, 
+            episode.name, 
+            episode.description, 
+            episode.page_count, 
+            episode.episode_number, 
+            publish_date, 
+            end_date, 
+        )
+    console.print(table)
+
+@app.command("download-episode")
+def download_episode(
+    episode_id: str, 
+    cookies: str = "", 
+    page_from: int = 0, 
+    page_to: int = -1, 
+    save_dir: str = "",
+    overwrite: bool = typer.Option(False, help="Overwrite existing files"),
+    wait_interval: float = typer.Option(0.5, help="Wait interval between each page download"),
+):
+    load_cookies(cookies)
+    comici_viewer_id = client.episodes(episode_id=episode_id)
+    episodes_info = client.book_episodeInfo(comici_viewer_id)
+    book_info = client.book_info(comici_viewer_id)
+
+    episode_info = [episode for episode in episodes_info if episode._id == comici_viewer_id][0]
+
+    page_to = int(episode_info.page_count) if page_to < 0 or page_to > int(episode_info.page_count) else page_to
+    page_from = 0 if page_from < 0 or page_from > page_to else page_from
+
+    contents_info = client.book_contentsInfo(
+        comici_viewer_id, 
+        page_from, 
+        page_to, 
+        client.user_id if client.user_id else "0"
+    )
+
+    save_dir_path = pathlib.Path(save_dir)
+    save_dir_path = save_dir_path / book_info.title / episode_info.name
+    save_dir_path.mkdir(parents=True, exist_ok=True)
+
+    filename_just = len(str(page_to)) + 1
+
+    console.print(f"[green] Downloading episode '{episode_info.name}' of '{book_info.title}'[/]")
+
+    for contents in track(contents_info):
+        filename = "{}.png".format(str(contents.sort + 1).rjust(filename_just, '0'))
+        save_full_path = save_dir_path / filename
+
+        if save_full_path.exists() and overwrite: continue
+
+        client.get_and_descramble_image(contents, episode_id).save(
+            save_full_path,
+            format = "PNG",
+            compress_level = 1,
+        )
+        time.sleep(wait_interval)
+    
+    console.print(f"[green] Downloaded {page_to - page_from + 1} pages to '{save_dir_path}'[/]")
+
+@app.command("download-series")
+def download_series(
+    series_id: str, 
+    cookies: str = "",
+    save_dir: str = "",
+    wait_interval: float = typer.Option(0.5, help="Wait interval between each page download")
+):
+    load_cookies(cookies)
+
+    console.print(f"[green] Downloading series '{series_id}'[/]")
+
+    page = 0
+    paging_list = client.series_pagingList(
+        series_id=series_id,
+    )
+    resultCount = len(paging_list)
+
+    while resultCount > 0:
+        page += 1
+        paging_list_cache = client.series_pagingList(
+            series_id=series_id,
+            page=page,
+        )
+        resultCount = len(paging_list_cache)
+        paging_list.extend(paging_list_cache)
+
+    console.print(f"[green] Found {len(paging_list)} episodes[/]")
+
+    for episode in paging_list:
+        if episode.href and episode.symbols[0].split("\n")[0] in ("閲覧期限", "無料"):
+            download_episode(
+                urlsplit(episode.href).path.rstrip("/").split("/")[-1],
+                save_dir=save_dir,
+                wait_interval=wait_interval
+            )
+        else:
+            console.print(f"[yellow] Episode '{episode.title}' is not available for your account[/]")
+
+if __name__ == "__main__":
+    app()
