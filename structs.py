@@ -25,6 +25,12 @@ class MangaEpisodeItem:
     symbols: list[str]
 
 @dataclass
+class BookshelfItem:
+    href: str
+    title: str
+    last_update: str
+
+@dataclass
 class Info:
    _id: str
    title: str

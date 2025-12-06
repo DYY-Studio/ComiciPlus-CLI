@@ -1,4 +1,4 @@
-import httpx, pathlib, json, math, io, datetime, sys
+import httpx, pathlib, json, math, io, datetime, sys, time
 from typing import Literal
 from bs4 import BeautifulSoup as bs
 from urllib.parse import urljoin, urlsplit
@@ -129,6 +129,51 @@ class ComiciClient:
                     resultList.append(link["href"])
         
         return resultList
+    
+    def get_user_id_and_name(self, soup: bs | None = None) -> tuple[str | None, str | None]:
+        if not soup:
+            response = self.main_client.get(
+                self.HOST,
+            )
+            response.raise_for_status()
+
+            time.sleep(0.2)
+
+            soup = bs(response.text, "html.parser")
+        
+        login_user_name = soup.find("span", {"id": "login_user_name"})
+        login_user_id = soup.find("span", {"id": "login_user_id"})
+        
+        return login_user_id.text.strip("\n\t ") if login_user_id else None, \
+                login_user_name.text.strip("\n\t ") if login_user_name else None
+    
+    def bookshelf(self, page: int = 0, bookshelf_type: Literal["", "favorite", "buying", "liking"] = "") -> tuple[list[BookshelfItem], bool]:
+
+        user_id, user_name = self.get_user_id_and_name()
+        if not user_name:
+            raise ValueError("Not login")
+
+        response = self.main_client.get(
+            urljoin(self.HOST, f"/{user_name}/bookshelf/{bookshelf_type}"),
+            params={
+                "page": page if page > 0 else 0
+            }
+        )
+        response.raise_for_status()
+
+        resultList: list[BookshelfItem] = list()
+
+        soup = bs(response.text, "html.parser")
+
+        article_list = soup.find("div", {"class": "article-list"})
+        for article in article_list.find_all("a", {"class": "article-item-inner"}):
+            resultList.append(BookshelfItem(
+                href = article['href'],
+                title = article.find("div", {"class": "primary-info"}).text.strip("\n\t "),
+                last_update = article.find("div", {"class": "date-info"}).text.strip("\n\t "),
+            ))
+
+        return resultList, self.has_next_page(soup)
     
     @staticmethod
     def has_next_page(soup: bs):

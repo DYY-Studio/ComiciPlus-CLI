@@ -18,6 +18,37 @@ def sites():
     console.print(client.get_all_support_sites())
 
 @app.command()
+def bookshelf(
+    page: int = typer.Option(0, min = 0, help="Page number when too many bookshelf items to show"),
+    bookshelf_type: Literal["", "favorite", "buying", "liking"] = typer.Option("", "--type", help="== [閲覧, お気に入り, レンタル, いいね]"),
+    cookies: str = typer.Option("", help="Path to your cookies.json, should use Cookie-Editor JSON format"),
+):
+    if cookies: 
+        client.update_cookies_from_CookieEditorJson(cookies)
+    results, has_next_page = client.bookshelf(
+        page=page, 
+        bookshelf_type=bookshelf_type
+    )
+    
+    table = Table(
+        "Series ID", 
+        Column("Title", overflow="fold"), 
+        "Last Updated",
+        title=f"Bookshelf (Page: {page}, Type: {bookshelf_type})", 
+        show_lines=True
+    )
+    for result in results:
+        table.add_row(
+            urlsplit(result.href).path.rstrip("/").split("/")[-1], 
+            result.title,
+            result.last_update
+        )
+
+    console.print(table)
+    if has_next_page: 
+        console.print(f"[yellow]There are more bookshelf items, use `--page {page+1}` to show them[/]")
+
+@app.command()
 def author(
     author_id: str,
     page: int = typer.Option(0, min = 0, help="Page number when too many series to show"),
