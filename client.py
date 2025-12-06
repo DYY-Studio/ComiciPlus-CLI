@@ -62,7 +62,6 @@ class ComiciClient:
         self.cdn_client = httpx.Client(
             headers={
                 "User-Agent": user_agent if user_agent else self.USER_AGENT_DEFAULT,
-                "Origin": self.HOST,
                 "sec-fetch-dest": "image",
                 "sec-fetch-mode": "cors",
                 "sec-fetch-site": "same-site",
@@ -315,7 +314,8 @@ class ComiciClient:
     
     def get_and_descramble_image(self, contentsInfo: ContentsInfo, episode_id: str) -> Image.Image:
         self.cdn_client.headers.update({
-            "Referer": urljoin(self.HOST, f"/episodes/{episode_id}/")
+            "Referer": urljoin(self.HOST, f"/episodes/{episode_id}/"),
+            "Origin": self.HOST,
         })
         response = self.cdn_client.get(
             contentsInfo.imageUrl
