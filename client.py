@@ -129,7 +129,7 @@ class ComiciClient:
         
         return resultList
     
-    def series_pagingList(self, href: str | None = None, series_id: str | None = None, sort: int = 2, page: int = 0, limit: int = 50) -> list[MangaEpisodeItem]:
+    def series_pagingList(self, href: str | None = None, series_id: str | None = None, sort: int = 2, page: int = 0, limit: int = 50) -> tuple[list[MangaEpisodeItem], bool]:
         if not href and not series_id: 
             raise ValueError("Either href or series_id must be provided")
         
@@ -160,7 +160,7 @@ class ComiciClient:
 
         series_ep_list = soup.find("div", {"class": "series-ep-list"})
 
-        if not series_ep_list: return resultList
+        if not series_ep_list: return resultList, False
 
         for ep_item in series_ep_list.find_all("div", {"class": "series-ep-list-item"}):
             link = ep_item.find("a")
@@ -189,7 +189,7 @@ class ComiciClient:
                 symbols=symbols
             ))
 
-        return resultList
+        return resultList, True if soup.find("a", {"class": "next-page"}) else False
 
     def episodes(self, href: str | None = None, episode_id: str | None = None) -> str:
         if not href and not episode_id: 

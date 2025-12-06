@@ -60,7 +60,7 @@ def episodes(
     """
     load_cookies(cookies)
     
-    paging_list = client.series_pagingList(
+    paging_list, has_next_page = client.series_pagingList(
         series_id=series_id,
         sort=sort, 
         page=page, 
@@ -86,6 +86,8 @@ def episodes(
             episode.update_date, 
         )
     console.print(table)
+    if has_next_page: 
+        console.print("[yellow]There are more episodes, use `--page` and `--limit` to show more[/]")
 
 @app.command("detailed-episodes")
 def detailed_episodes(episode_id: str):
@@ -264,18 +266,16 @@ def download_series(
     console.print(f"[green]Downloading series '{series_id}'[/]")
 
     page = 0
-    paging_list = client.series_pagingList(
+    paging_list, has_next_page = client.series_pagingList(
         series_id=series_id,
     )
-    resultCount = len(paging_list)
-
-    while resultCount > 0:
+    
+    while has_next_page:
         page += 1
-        paging_list_cache = client.series_pagingList(
+        paging_list_cache, has_next_page = client.series_pagingList(
             series_id=series_id,
             page=page,
         )
-        resultCount = len(paging_list_cache)
         paging_list.extend(paging_list_cache)
 
     console.print(f"[green] Found {len(paging_list)} episodes[/]")
