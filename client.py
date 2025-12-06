@@ -1,4 +1,4 @@
-import httpx, pathlib, json, math, io
+import httpx, pathlib, json, math, io, datetime
 from bs4 import BeautifulSoup as bs
 from urllib.parse import urljoin, urlsplit
 from PIL import Image
@@ -84,7 +84,21 @@ class ComiciClient:
         if isinstance(path, str): path = pathlib.Path(path)
         if path.exists():
             with open(path, "r", encoding="utf-8") as f:
-                self.main_client.cookies.update({item['name']: item['value'] for item in json.load(f)})
+                json_dict = json.load(f)
+                if isinstance(json_dict, list) and len(json_dict) > 0:
+
+                    earliest_expiration_timestamp = min([item['expirationDate'] for item in json_dict])
+                    earliest_expiration_date = datetime.datetime.fromtimestamp(earliest_expiration_timestamp)
+                    if earliest_expiration_date < datetime.datetime.now(): 
+                        raise ValueError("Cookies expired, please update your cookies")
+                    
+                    domain = json_dict[0]['domain']
+                    if domain not in self.HOST:
+                        raise ValueError(f"Cookies domain mismatch, {domain} != {urlsplit(self.HOST).hostname}")
+
+                    self.main_client.cookies.update({item['name']: item['value'] for item in json_dict})
+                else:
+                    raise ValueError("Invalid Cookie-Editor JSON format")
         else:
             raise FileNotFoundError("Cookies file not found")
 

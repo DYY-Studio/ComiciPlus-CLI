@@ -74,7 +74,10 @@ def episodes(
         show_lines=True
     )
     for episode in paging_list:
-        if bought_only and not episode.href: continue
+        if bought_only:
+            if not episode.href: continue
+            elif not episode.symbols[0].split("\n")[0] in ("閲覧期限", "無料", "今なら無料"):
+                continue
         table.add_row(
             urlsplit(episode.href).path.rstrip("/").split("/")[-1] if episode.href else "-", 
             episode.title, 
