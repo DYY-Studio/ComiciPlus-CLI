@@ -41,7 +41,7 @@
 * `detailed-episodes`
   * 输入连载下的任意一个可访问的Episode ID (话ID)
   * 通过API查询更详细的话数信息，得到Comici Viewer ID
-* `download-episodes`
+* `download-episode`
   * 输入Episode ID下载单话
   * 或Comici Viewer ID
   * 或`https://<HOST>/episodes/<EPISODE_ID>`
