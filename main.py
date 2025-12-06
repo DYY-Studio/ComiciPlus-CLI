@@ -29,6 +29,8 @@ def bookshelf(
         page=page, 
         bookshelf_type=bookshelf_type
     )
+    if not results:
+        console.print("[red]No results[/]")
     
     table = Table(
         "Series ID", 

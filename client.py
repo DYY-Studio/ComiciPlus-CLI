@@ -166,6 +166,7 @@ class ComiciClient:
         soup = bs(response.text, "html.parser")
 
         article_list = soup.find("div", {"class": "article-list"})
+        if not article_list: return resultList, False
         for article in article_list.find_all("a", {"class": "article-item-inner"}):
             resultList.append(BookshelfItem(
                 href = article['href'],
