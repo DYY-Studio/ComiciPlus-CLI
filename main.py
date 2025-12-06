@@ -134,7 +134,7 @@ def download_episode(
     cbz: bool = typer.Option(False, help="Save as CBZ file"),
     overwrite: bool = typer.Option(False, help="Overwrite existing files"),
     wait_interval: float = typer.Option(0.5, min = 0, help="Wait interval between each page download"),
-    lossless_webp: bool = typer.Option(False, help="Use lossless WebP instead of PNG"),
+    ls_webp: bool = typer.Option(False, help="Use lossless WebP instead of PNG"),
     compression: int = typer.Option(1, min = 0, max = 9, help="Compression level, PNG max: 9, WebP max: 6"),
 ):
     load_cookies(cookies)
@@ -196,7 +196,7 @@ def download_episode(
     for contents in track(contents_info):
         filename = "{}.{}".format(
             str(contents.sort + 1).rjust(filename_just, '0'),
-            "webp" if lossless_webp else "png"
+            "webp" if ls_webp else "png"
         )
 
         save_full_path = save_dir_path / filename
@@ -214,12 +214,12 @@ def download_episode(
         image = client.get_and_descramble_image(contents, episode_id)
         if cbz:
             with cbz_file.open(filename, "w") as f:
-                if lossless_webp:
+                if ls_webp:
                     image.save(f, "WEBP", lossless=True, method=compression if compression <= 6 else 6)
                 else:
                     image.save(f, "PNG", compress_level=compression)
         else:
-            if lossless_webp:
+            if ls_webp:
                 image.save(save_full_path, "WEBP", lossless=True, method=compression if compression <= 6 else 6)
             else:
                 image.save(save_full_path, "PNG", compress_level=compression)
@@ -244,7 +244,7 @@ def download_series(
     cbz: bool = typer.Option(False, help="Save as CBZ file"),
     overwrite: bool = typer.Option(False, help="Overwrite existing files"),
     wait_interval: float = typer.Option(0.5, min = 0, help="Wait interval between each page download"),
-    lossless_webp: bool = typer.Option(False, help="Use lossless WebP instead of PNG"),
+    ls_webp: bool = typer.Option(False, help="Use lossless WebP instead of PNG"),
     compression: int = typer.Option(1, min = 0, max = 9, help="Compression level, PNG max: 9, WebP max: 6"),
 ):
     load_cookies(cookies)
@@ -282,7 +282,7 @@ def download_series(
                 episode_id=urlsplit(episode.href).path.rstrip("/").split("/")[-1],
                 save_dir=save_dir,
                 cbz=cbz,
-                lossless_webp=lossless_webp,
+                lossless_webp=ls_webp,
                 png_compression=compression,
                 wait_interval=wait_interval,
                 overwrite = overwrite
