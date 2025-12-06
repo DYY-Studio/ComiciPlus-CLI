@@ -1,4 +1,4 @@
-import httpx, pathlib, json, math, io, datetime
+import httpx, pathlib, json, math, io, datetime, sys
 from bs4 import BeautifulSoup as bs
 from urllib.parse import urljoin, urlsplit
 from PIL import Image
@@ -80,20 +80,23 @@ class ComiciClient:
         elif isinstance(cookies, pathlib.Path) or isinstance(cookies, str):
             self.update_cookies_from_CookieEditorJson(cookies)
 
-    def update_cookies_from_CookieEditorJson(self, path: str | pathlib.Path = None):
+    def update_cookies_from_CookieEditorJson(self, path: str | pathlib.Path = None, ignore_expired: bool = False):
         if isinstance(path, str): path = pathlib.Path(path)
         if path.exists():
             with open(path, "r", encoding="utf-8") as f:
                 json_dict = json.load(f)
                 if isinstance(json_dict, list) and len(json_dict) > 0:
-
-                    earliest_expiration_timestamp = min([item['expirationDate'] for item in json_dict])
-                    earliest_expiration_date = datetime.datetime.fromtimestamp(earliest_expiration_timestamp)
-                    if earliest_expiration_date < datetime.datetime.now(): 
-                        raise ValueError("Cookies expired, please update your cookies")
+                    if not ignore_expired:
+                        earliest_expiration_timestamp = min([
+                            item.get('expirationDate', sys.maxsize) 
+                            for item in json_dict
+                            if item['name'] not in ('__stripe_sid', )
+                        ])
+                        if earliest_expiration_timestamp < datetime.datetime.now().timestamp(): 
+                            raise ValueError(f"Cookies {[item['name'] for item in json_dict if item.get('expirationDate', sys.maxsize) < datetime.datetime.now().timestamp()]} expired {earliest_expiration_timestamp} < {datetime.datetime.now().timestamp()}, please update your cookies")
                     
                     domain = json_dict[0]['domain']
-                    if domain not in self.HOST:
+                    if domain.lstrip('.') not in self.HOST:
                         raise ValueError(f"Cookies domain mismatch, {domain} != {urlsplit(self.HOST).hostname}")
 
                     self.main_client.cookies.update({item['name']: item['value'] for item in json_dict})

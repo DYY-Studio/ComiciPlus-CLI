@@ -1,0 +1,5 @@
+httpx
+typer
+rich
+bs4
+pillow

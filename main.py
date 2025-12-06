@@ -175,10 +175,7 @@ def download_episode(
     )
 
     save_dir_path = pathlib.Path(save_dir)
-    if cbz:
-        save_dir_path = save_dir_path / book_info.title
-    else:
-        save_dir_path = save_dir_path / book_info.title / episode_info.name
+    save_dir_path = save_dir_path / book_info.title / episode_info.name
     save_dir_path.mkdir(parents=True, exist_ok=True)
 
     filename_just = len(str(page_to)) + 1
@@ -186,28 +183,45 @@ def download_episode(
     console.print(f"[green] Downloading episode '{episode_info.name}' of '{book_info.title}'[/]")
 
     if cbz:
-        cbz_file = zipfile.ZipFile(save_dir_path / f"{episode_info.name}.cbz", "w")
+        cbz_file_path = save_dir_path.parent / f"{episode_info.name}.cbz"
+        cbz_file = zipfile.ZipFile(
+            str(cbz_file_path),
+            "a" if cbz_file_path.exists() else "w"
+        )
 
     for contents in track(contents_info):
         filename = "{}.png".format(str(contents.sort + 1).rjust(filename_just, '0'))
+
         save_full_path = save_dir_path / filename
-
-        if save_full_path.exists() and not overwrite: continue
-
-        filebytes = client.get_and_descramble_image(contents, episode_id).tobytes(
-            format = "PNG",
-            compress_level = png_compression,
-        )
-        if cbz:
-            cbz_file.writestr(filename, filebytes)
+        if save_full_path.exists():
+            if cbz:
+                if cbz_file.mode == "a":
+                    if filename in cbz_file.namelist(): continue
+                cbz_file.write(save_full_path, filename)
+                save_full_path.unlink(missing_ok=True)
+                continue
+            if not overwrite: continue
         else:
-            save_full_path.write_bytes(filebytes)
+            if cbz and cbz_file.mode == "a" and filename in cbz_file.namelist(): continue
+
+        image = client.get_and_descramble_image(contents, episode_id)
+        if cbz:
+            with cbz_file.open(filename, "w") as f:
+                image.save(f, "PNG", compress_level=png_compression)
+        else:
+            image.save(save_full_path, "PNG", compress_level=png_compression)
         time.sleep(wait_interval)
 
     if cbz:
         cbz_file.close()
-    
-    console.print(f"[green] Downloaded {page_to - page_from + 1} pages to '{save_dir_path}'[/]")
+        if save_dir_path.exists(): 
+            try:
+                save_dir_path.rmdir()
+            except:
+                pass
+        console.print(f"[green] Downloaded {page_to - page_from + 1} pages to '{cbz_file_path}'[/]")
+    else:
+        console.print(f"[green] Downloaded {page_to - page_from + 1} pages to '{save_dir_path}'[/]")
 
 @app.command("download-series")
 def download_series(
