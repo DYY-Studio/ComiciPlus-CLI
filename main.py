@@ -13,6 +13,11 @@ console = Console()
 client = ComiciClient()
 
 @app.command()
+def support_sites():
+    """All supported sites listed on https://comici.co.jp/business/comici-plus"""
+    console.print(client.get_all_support_sites())
+
+@app.command()
 def search(
     keyword: str, 
     page: int = typer.Option(0, min = 0, help="Page number when too many results to show against the limit"),

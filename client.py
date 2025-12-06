@@ -80,7 +80,12 @@ class ComiciClient:
         elif isinstance(cookies, pathlib.Path) or isinstance(cookies, str):
             self.update_cookies_from_CookieEditorJson(cookies)
 
-    def update_cookies_from_CookieEditorJson(self, path: str | pathlib.Path = None, ignore_expired: bool = False):
+    def update_cookies_from_CookieEditorJson(
+            self, 
+            path: str | pathlib.Path = None, 
+            ignore_expired: bool = False,
+            ignore_domain_mismatch: bool = True
+        ):
         if isinstance(path, str): path = pathlib.Path(path)
         if path.exists():
             with open(path, "r", encoding="utf-8") as f:
@@ -95,15 +100,35 @@ class ComiciClient:
                         if earliest_expiration_timestamp < datetime.datetime.now().timestamp(): 
                             raise ValueError(f"Cookies {[item['name'] for item in json_dict if item.get('expirationDate', sys.maxsize) < datetime.datetime.now().timestamp()]} expired {earliest_expiration_timestamp} < {datetime.datetime.now().timestamp()}, please update your cookies")
                     
-                    domain = json_dict[0]['domain']
-                    if domain.lstrip('.') not in self.HOST:
-                        raise ValueError(f"Cookies domain mismatch, {domain} != {urlsplit(self.HOST).hostname}")
+                    # all website that use ComiciPlus share login infomation.
+                    # maybe we donot need to check domain
+                    if not ignore_domain_mismatch:
+                        domain = json_dict[0]['domain']
+                        if domain.lstrip('.') not in self.HOST:
+                            raise ValueError(f"Cookies domain mismatch, {domain} != {urlsplit(self.HOST).hostname}")
 
                     self.main_client.cookies.update({item['name']: item['value'] for item in json_dict})
                 else:
                     raise ValueError("Invalid Cookie-Editor JSON format")
         else:
             raise FileNotFoundError("Cookies file not found")
+
+    def get_all_support_sites(self) -> list[str]:
+        response = self.main_client.get(
+            "https://comici.co.jp/business/comici-plus",
+        )
+        response.raise_for_status()
+
+        resultList = list()
+
+        soup = bs(response.text, "html.parser")
+        for cards in soup.find_all("div", {"data-structure":"m-cards"}):
+            for card in cards.find_all("div", {"data-structure": "m-card"}):
+                link = card.find("a")
+                if link.has_attr("href") and not link["href"].startswith("javascript"):
+                    resultList.append(link["href"])
+        
+        return resultList
 
     def search(
         self, 
