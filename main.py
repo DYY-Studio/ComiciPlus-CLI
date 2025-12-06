@@ -1,5 +1,5 @@
 from client import ComiciClient
-import typer, pathlib, time, config
+import typer, pathlib, time, config, zipfile
 from urllib.parse import urlsplit
 from rich.console import Console
 from rich.table import Table, Column
@@ -46,9 +46,9 @@ def load_cookies(cookies: str = ""):
 @app.command()
 def episodes(
     series_id: str, 
-    sort: int = typer.Option(2, help="1: Newest first, 2: Oldest first"), 
-    page: int = typer.Option(0, help="Page number when too many episodes to show against the limit"), 
-    limit: int = typer.Option(50, help="Limit of episodes to show"), 
+    sort: int = typer.Option(2, min = 1, max = 2, help="1: Newest first, 2: Oldest first"), 
+    page: int = typer.Option(0, min = 0, help="Page number when too many episodes to show against the limit"), 
+    limit: int = typer.Option(50, min = 0, help="Limit of episodes to show"), 
     cookies: str = typer.Option("", help="Path to your cookies.json, should use Cookie-Editor JSON format"), 
     bought_only: bool = typer.Option(True, help="Only show bought episodes"),
 ):
@@ -131,8 +131,10 @@ def download_episode(
     page_from: int = 0, 
     page_to: int = -1,
     save_dir: str = "",
+    cbz: bool = typer.Option(False, help="Save as CBZ file"),
     overwrite: bool = typer.Option(False, help="Overwrite existing files"),
-    wait_interval: float = typer.Option(0.5, help="Wait interval between each page download"),
+    wait_interval: float = typer.Option(0.5, min = 0, help="Wait interval between each page download"),
+    png_compression: int = typer.Option(1, min = 0, max = 9, help="PNG compression level"),
 ):
     load_cookies(cookies)
 
@@ -173,12 +175,18 @@ def download_episode(
     )
 
     save_dir_path = pathlib.Path(save_dir)
-    save_dir_path = save_dir_path / book_info.title / episode_info.name
+    if cbz:
+        save_dir_path = save_dir_path / book_info.title
+    else:
+        save_dir_path = save_dir_path / book_info.title / episode_info.name
     save_dir_path.mkdir(parents=True, exist_ok=True)
 
     filename_just = len(str(page_to)) + 1
 
     console.print(f"[green] Downloading episode '{episode_info.name}' of '{book_info.title}'[/]")
+
+    if cbz:
+        cbz_file = zipfile.ZipFile(save_dir_path / f"{episode_info.name}.cbz", "w")
 
     for contents in track(contents_info):
         filename = "{}.png".format(str(contents.sort + 1).rjust(filename_just, '0'))
@@ -186,12 +194,18 @@ def download_episode(
 
         if save_full_path.exists() and not overwrite: continue
 
-        client.get_and_descramble_image(contents, episode_id).save(
-            save_full_path,
+        filebytes = client.get_and_descramble_image(contents, episode_id).tobytes(
             format = "PNG",
-            compress_level = 1,
+            compress_level = png_compression,
         )
+        if cbz:
+            cbz_file.writestr(filename, filebytes)
+        else:
+            save_full_path.write_bytes(filebytes)
         time.sleep(wait_interval)
+
+    if cbz:
+        cbz_file.close()
     
     console.print(f"[green] Downloaded {page_to - page_from + 1} pages to '{save_dir_path}'[/]")
 
@@ -200,8 +214,10 @@ def download_series(
     series_id: str, 
     cookies: str = "",
     save_dir: str = "",
+    cbz: bool = typer.Option(False, help="Save as CBZ file"),
     overwrite: bool = typer.Option(False, help="Overwrite existing files"),
-    wait_interval: float = typer.Option(0.5, help="Wait interval between each page download")
+    wait_interval: float = typer.Option(0.5, min = 0, help="Wait interval between each page download"),
+    png_compression: int = typer.Option(1, min = 0, max = 9, help="PNG compression level"),
 ):
     load_cookies(cookies)
 
@@ -229,6 +245,8 @@ def download_series(
             download_episode(
                 episode_id=urlsplit(episode.href).path.rstrip("/").split("/")[-1],
                 save_dir=save_dir,
+                cbz=cbz,
+                png_compression=png_compression,
                 wait_interval=wait_interval,
                 overwrite = overwrite
             )
