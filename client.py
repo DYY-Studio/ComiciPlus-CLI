@@ -17,6 +17,11 @@ class ComiciClient:
     PROXY_DEFAULT: str | None = None
     COOKIES_DEFAULT: str | None = None
 
+    def set_host(self, host: str):
+        host = "https://" + (urlsplit(host).hostname if urlsplit(host).hostname else host)
+        if not self.is_supported_version(host):
+            raise ValueError(f"Unsupported host: {host}")
+
     def load_dict_config(self, config: dict):
         if "cookies" in config:
             self.COOKIES_DEFAULT = config["cookies"]
@@ -25,7 +30,8 @@ class ComiciClient:
         if "user_agent" in config:
             self.USER_AGENT_DEFAULT = config["user_agent"]
         if "host" in config:
-            self.HOST = "https://" + (urlsplit(config["host"]).hostname if urlsplit(config["host"]).hostname else config["host"])
+            host = config["host"]
+            self.HOST = "https://" + (urlsplit(host).hostname if urlsplit(host).hostname else host)
 
     def load_config_file(self, config_path: str | pathlib.Path = None):
         if not config_path: 
@@ -75,6 +81,9 @@ class ComiciClient:
             transport=httpx.HTTPTransport(retries=3),
             proxy=proxy if proxy else self.PROXY_DEFAULT,
         )
+
+        if not self.is_supported_version():
+            raise ValueError(f"Unsupported host: {self.HOST}")
 
         if cookies is None: return
         if isinstance(cookies, dict):
@@ -131,6 +140,20 @@ class ComiciClient:
                     resultList.append(link["href"])
         
         return resultList
+    
+    def is_supported_version(self, host: str | None = None, soup: bs | None = None):
+        if not soup:
+            response = self.main_client.get(
+                host if host else self.HOST,
+            )
+            response.raise_for_status()
+
+            time.sleep(0.2)
+
+            soup = bs(response.text, "html.parser")
+
+        contentLink = soup.find("span", {"id": "contentLink"}) 
+        return True if contentLink else False
     
     def get_user_id_and_name(self, soup: bs | None = None) -> tuple[str | None, str | None]:
         if not soup:
@@ -342,6 +365,34 @@ class ComiciClient:
             ))
 
         return resultList, ComiciClient.has_next_page(soup)
+    
+    def api_episodes(
+        self,
+        href: str | None = None, 
+        series_id: str | None = None,
+        episode_from: int = 1,
+        episode_to: int = -1,
+    ):
+        if not href and not series_id: 
+            raise ValueError("Either href or series_id must be provided")
+        
+        if href:
+            urlpath_splited = urlsplit(href).path.rstrip("/").split("/")
+            if len(urlpath_splited) < 2: 
+                raise ValueError("Invalid href")
+            elif not urlpath_splited[-2] == "series":
+                raise ValueError("Invalid href")
+            series_id = urlpath_splited[-1]
+
+        response = self.main_client.get(
+            urljoin(self.HOST, f"/api/episodes"),
+            params={
+                "seriesHash": series_id,
+                "episodeFrom": episode_from,
+                "episodeTo": episode_to
+            }
+        )
+        response.raise_for_status()
     
     def series_pagingList(self, href: str | None = None, series_id: str | None = None, sort: int = 2, page: int = 0, limit: int = 50) -> tuple[list[MangaEpisodeItem], bool]:
         if not href and not series_id: 

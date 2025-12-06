@@ -90,7 +90,7 @@ def series_list(
     """List all series on the site"""
     results, has_next_page = client.series_list(
         sort=sort, 
-        page=page
+        page=page,
     )
     if not results:
         console.print("[red]No results[/]")
@@ -414,6 +414,7 @@ def download_series(
     wait_interval: float = typer.Option(0.5, min = 0, help="Wait interval between each page download"),
     ls_webp: bool = typer.Option(False, help="Use lossless WebP instead of PNG"),
     compression: int = typer.Option(1, min = 0, max = 9, help="Compression level, PNG max: 9, WebP max: 6"),
+    allow_mismatch: bool = typer.Option(False, help="Allow mismatch hostname"),
 ):
     load_cookies(cookies)
 
@@ -422,11 +423,18 @@ def download_series(
             series_id = urlsplit(series_id).path.rstrip("/").split("/")[-1]
         else:
             if urlsplit(client.HOST).hostname not in urlsplit(series_id).hostname:
-                console.print(f"[red]Invalid series ID: Hostname mismatch[/]")
+                if allow_mismatch:
+                    client.HOST = "https://" + urlsplit(series_id).hostname
+                    series_id = urlsplit(series_id).path.rstrip("/").split("/")[-1]
+                    console.print(f"[yellow]Hostname mismatch, using '{urlsplit(series_id).hostname}'[/]")
+                else:
+                    console.print(f"[red]Invalid series ID: Hostname mismatch[/]")
+                    typer.Abort()
+                    return
             else:
                 console.print("[red]Invalid series ID[/]")
-            typer.Abort()
-            return
+                typer.Abort()
+                return
 
     console.print(f"[green]Downloading series '{series_id}'[/]")
 
