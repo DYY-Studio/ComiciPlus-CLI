@@ -129,6 +129,22 @@ class ComiciClient:
                     resultList.append(link["href"])
         
         return resultList
+    
+    @staticmethod
+    def has_next_page(soup: bs):
+        pages_list = soup.find("ul", {"class": "mode-paging"})
+        if not pages_list: 
+            return False
+
+        has_next_page = True
+        for li in pages_list.find_all("li"):
+            if li.has_attr("class") and "mode-paging-active" in li["class"]:
+                has_next_page = False
+            elif not has_next_page:
+                has_next_page = True
+                break
+
+        return has_next_page
 
     def search(
         self, 
@@ -159,24 +175,125 @@ class ComiciClient:
         if not series_list: return resultList, False
         for manga_item in series_list.find_all("div", {"class": "manga-store-item"}):
             link = manga_item.find("a")
+
+            authors: list[Author] = list()
+            if _filter != "articles":
+                for author in manga_item.find_all("span", {"class": "manga-author-name"}):
+                    if author.parent.name == "a":
+                        if authors and authors[-1].href == author.parent["href"]:
+                            authors[-1].name += author.text.strip('\t\n ')
+                        else:
+                            authors.append(Author(author.text.strip('\t\n '), author.parent["href"]))
+                    else:
+                        if authors:
+                            if author.next_sibling and not author.next_sibling.text.strip('\t\n '):
+                                authors[-1].name += author.text.strip('\t\n ')
+                            elif not author.findNextSibling:
+                                authors[-1].name += author.text.strip('\t\n ')
+                            else:
+                                authors.append(Author(author.text.strip('\t\n '), ""))
+                        else:
+                            authors.append(Author(author.text.strip('\t\n '), ""))
+            else:
+                authors.append(Author("", ""))
+            
             resultList.append(MangaStoreItem(
                 href=link["href"] if link.has_attr("href") else link['data-href'],
                 title=manga_item.find("h2", {"class": "manga-title"}).text.strip('\n\t '),
-                author=link.find("span", {"class": "manga-author"}).text.strip('\n ').split('\n') if _filter != "articles" else "",
+                author=authors,
             ))
         
-        has_next_page = False
-        pages_list = soup.find("ul", {"class": "mode-paging"})
-        if not pages_list: 
-            return resultList, False
+        return resultList, ComiciClient.has_next_page(soup)
+    
+    def author(
+        self,
+        author_id: str,
+        page: int = 0,
+    ): 
+        response = self.main_client.get(
+            urljoin(self.HOST, f"/authors/{author_id}"),
+            params={
+                "page": page if page >= 0 else 0,
+            }
+        )
+        response.raise_for_status()
 
-        for img in pages_list.find_all("img"):
-            if img.has_attr("data-src") or img.has_attr("src"):
-                if "paging_next" in img["data-src"] if img.has_attr("data-src") else img["src"]:
-                    has_next_page = True
-                    break
+        resultList = list()
+
+        soup = bs(response.text, "html.parser")
+
+        series_list = soup.find("div", {"class": "authors-series-list"})
+        if not series_list: return resultList, False
+
+        for manga_store_item in series_list.find_all("div", {"class": "manga-store-item"}):
+            link = manga_store_item.find("a")
+            authors: list[Author] = list()
+            author_div = manga_store_item.find("div", {"class": "author"})
+
+            for author in author_div.find_all("a"):
+                authors.append(Author(author.text.strip('\t\n '), author["href"]))
+            
+            resultList.append(MangaStoreItem(
+                href=link["href"] if link.has_attr("href") else link['data-href'],
+                title=manga_store_item.find("div", {"class": "title-text"}).text.strip('\n\t '),
+                author=authors,
+            ))
         
-        return resultList, has_next_page
+        return resultList, ComiciClient.has_next_page(soup)
+    
+    def series_list(
+        self,
+        page: int = 0,
+        sort: Literal["更新順", "新作順"] = "更新順",
+    ) -> tuple[list[MangaStoreItem], bool]:
+        response = self.main_client.get(
+            urljoin(self.HOST, "/series/list"),
+            params={
+                "page": page if page >= 0 else 0,
+                "sort": "更新順" if sort == "更新順" else "新作順"
+            }
+        )
+        response.raise_for_status()
+
+        resultList: list[MangaStoreItem] = list()
+
+        soup = bs(response.text, "html.parser")
+
+        series_list = soup.find("div", {"class": "series-list"})
+        for series in series_list.find_all("div", {"class": "series-box-vertical"}):
+            article = series.find("div", {"class": "article-text"})
+            title = article.find("h2", {"class": "title-text"}).text.strip('\n\t ')
+            link = series.find("a")
+
+            if link.has_attr("href"):
+                href = link["href"]
+            elif link.has_attr("data-href"):
+                href = link['data-href']
+            else:
+                href = ""
+
+            authors: list[Author] = list()
+            author_div = series.find("div", {"class": "author"})
+
+            if len(author_div.contents) > 1:
+                for author in author_div.contents[1:]:
+                    name = author.text.strip('\n\t ')
+                    if not name: continue
+                    if author.name == "a" and author.has_attr("href"): 
+                        authors.append(Author(name.replace("\n", ""), author["href"]))
+                    else:
+                        if authors and authors[-1].name.endswith("/"):
+                            authors[-1].name = authors[-1].name + name
+                        else:
+                            authors.append(Author(name, ""))
+
+            resultList.append(MangaStoreItem(
+                href=href,
+                title=title,
+                author=authors
+            ))
+
+        return resultList, ComiciClient.has_next_page(soup)
     
     def series_pagingList(self, href: str | None = None, series_id: str | None = None, sort: int = 2, page: int = 0, limit: int = 50) -> tuple[list[MangaEpisodeItem], bool]:
         if not href and not series_id: 

@@ -2,10 +2,20 @@ from dataclasses import dataclass, asdict
 import json, datetime
 
 @dataclass
+class Author:
+    name: str
+    href: str
+
+@dataclass
 class MangaStoreItem:
     href: str
     title: str
-    author: list[str]
+    author: list[Author]
+
+    def __post_init__(self):
+        for i in range(len(self.author)):
+            if isinstance(self.author[i], str):
+                self.author[i] = Author(self.author[i], "")
 
 @dataclass
 class MangaEpisodeItem:

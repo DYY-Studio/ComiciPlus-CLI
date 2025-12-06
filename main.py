@@ -13,9 +13,89 @@ console = Console()
 client = ComiciClient()
 
 @app.command()
-def support_sites():
+def sites():
     """All supported sites listed on https://comici.co.jp/business/comici-plus"""
     console.print(client.get_all_support_sites())
+
+@app.command()
+def author(
+    author_id: str,
+    page: int = typer.Option(0, min = 0, help="Page number when too many series to show"),
+):
+    """List series of a author by author_id, only some sites support this"""
+    results, has_next_page = client.author(
+        author_id=author_id, 
+        page=page
+    )
+    if not results:
+        console.print("[red]No results[/]")
+
+    table = Table(
+        "Series ID", 
+        Column("Title", overflow="fold"), 
+        "Authors", 
+        "Author IDs",
+        title=f"Author Series (Author ID: {author_id}, Page: {page})", 
+    )
+    for result in results:
+        table.add_row(
+            urlsplit(result.href).path.rstrip("/").split("/")[-1], 
+            result.title, 
+            "\n".join([author.name for author in result.author]), 
+            "\n".join([urlsplit(author.href).path.rstrip("/").split("/")[-1] for author in result.author])
+        )
+    
+    console.print(table)
+    if has_next_page: 
+        console.print(f"[yellow]There are more series, use `--page {page+1}` to show them[/]")
+
+@app.command()
+def series_list(
+    sort: Literal["更新順", "新作順"] = "更新順",
+    page: int = typer.Option(0, min = 0, help="Page number when too many series to show"),
+):
+    """List all series on the site"""
+    results, has_next_page = client.series_list(
+        sort=sort, 
+        page=page
+    )
+    if not results:
+        console.print("[red]No results[/]")
+
+    has_author_ids = False
+    for result in results:
+        for author in result.author: 
+            if author.href: 
+                has_author_ids = True
+                break
+    
+    table = Table(
+        "Series ID", 
+        Column("Title", overflow="fold"), 
+        "Authors", 
+        title=f"Series List (Sort: {sort}, Page: {page})", 
+        show_lines=True
+    )
+    if has_author_ids: 
+        table.add_column("Author IDs")
+
+    for result in results:
+        cols = [
+            urlsplit(result.href).path.rstrip("/").split("/")[-1], 
+            result.title, 
+            "\n".join([author.name for author in result.author]),
+        ]
+        if has_author_ids: 
+            cols.append(
+                "\n".join([urlsplit(author.href).path.rstrip("/").split("/")[-1] for author in result.author])
+            )
+            
+        table.add_row(*cols)
+    
+    console.print(table)
+
+    if has_next_page: 
+        console.print(f"[yellow]There are more series, use `--page {page+1}` to show them[/]")
 
 @app.command()
 def search(
@@ -55,16 +135,34 @@ def search(
             title=f"Search Results (Filter: {_filter}, Page: {page}, Limit: {size})", 
             show_lines=True
         )
+
+        has_author_ids = False
         for result in results:
-            table.add_row(
+            for author in result.author: 
+                if author.href: 
+                    has_author_ids = True
+                    break
+        
+        if has_author_ids:
+            table.add_column("Author IDs")
+
+        for result in results:
+            cols = [
                 urlsplit(result.href).path.rstrip("/").split("/")[-1], 
                 result.title, 
-                "\n".join(result.author)
+                "\n".join([author.name for author in result.author]),
+            ]
+            if has_author_ids: 
+                cols.append(
+                    "\n".join([urlsplit(author.href).path.rstrip("/").split("/")[-1] for author in result.author])
+                )
+            table.add_row(
+                *cols
             )
     console.print(table)
 
     if has_next_page: 
-        console.print("[yellow]There are more results, use `--page` and `--size` to show more[/]")
+        console.print(f"[yellow]There are more results, use `--page {page+1}` and `--size` to show more[/]")
 
 def load_cookies(cookies: str = ""):
     global client
@@ -121,7 +219,7 @@ def episodes(
         )
     console.print(table)
     if has_next_page: 
-        console.print("[yellow]There are more episodes, use `--page` and `--limit` to show more[/]")
+        console.print(f"[yellow]There are more episodes, use `--page {page+1}` and `--limit` to show more[/]")
 
 @app.command("detailed-episodes")
 def detailed_episodes(episode_id: str):
