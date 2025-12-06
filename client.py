@@ -90,7 +90,7 @@ class ComiciClient:
                         earliest_expiration_timestamp = min([
                             item.get('expirationDate', sys.maxsize) 
                             for item in json_dict
-                            if item['name'] not in ('__stripe_sid', )
+                            if not item['name'].endswith('sid')
                         ])
                         if earliest_expiration_timestamp < datetime.datetime.now().timestamp(): 
                             raise ValueError(f"Cookies {[item['name'] for item in json_dict if item.get('expirationDate', sys.maxsize) < datetime.datetime.now().timestamp()]} expired {earliest_expiration_timestamp} < {datetime.datetime.now().timestamp()}, please update your cookies")
