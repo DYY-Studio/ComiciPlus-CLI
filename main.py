@@ -126,7 +126,7 @@ def detailed_episodes(episode_id: str):
 
 @app.command("download-episode")
 def download_episode(
-    episode_id: str = typer.Argument(help="Episode ID (13 chars) or Comici Viewer ID (32 chars)"), 
+    episode_id: str = typer.Argument(help="Episode ID (13 chars) / Comici Viewer ID (32 chars) / full URL of episode"), 
     cookies: str = "", 
     page_from: int = 0, 
     page_to: int = -1,
@@ -139,9 +139,12 @@ def download_episode(
     load_cookies(cookies)
 
     if len(episode_id) not in (13, 32):
-        console.print("[red]Invalid episode ID[/]")
-        typer.Abort()
-        return
+        if urlsplit(client.HOST).hostname in urlsplit(episode_id).hostname:
+            episode_id = urlsplit(episode_id).path.rstrip("/").split("/")[-1]
+        else:
+            console.print("[red]Invalid series ID[/]")
+            typer.Abort()
+            return
     
     if len(episode_id) == 13:
         comici_viewer_id = client.episodes(episode_id=episode_id)
@@ -225,7 +228,7 @@ def download_episode(
 
 @app.command("download-series")
 def download_series(
-    series_id: str, 
+    series_id: str = typer.Argument(help="Series ID (13 chars) / full URL of series"), 
     cookies: str = "",
     save_dir: str = "",
     cbz: bool = typer.Option(False, help="Save as CBZ file"),
@@ -234,6 +237,14 @@ def download_series(
     png_compression: int = typer.Option(1, min = 0, max = 9, help="PNG compression level"),
 ):
     load_cookies(cookies)
+
+    if len(series_id) != 13:
+        if urlsplit(client.HOST).hostname in urlsplit(series_id).hostname:
+            series_id = urlsplit(series_id).path.rstrip("/").split("/")[-1]
+        else:
+            console.print("[red]Invalid series ID[/]")
+            typer.Abort()
+            return
 
     console.print(f"[green]Downloading series '{series_id}'[/]")
 

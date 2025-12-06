@@ -1,5 +1,6 @@
 import typer, json, pathlib
 from rich.console import Console
+from urllib.parse import urlsplit
 
 app = typer.Typer(rich_markup_mode="markdown")
 console = Console()
@@ -19,7 +20,7 @@ def set(
             "cookies": cookies,
             "proxy": proxy,
             "user_agent": user_agent,
-            "host": host,
+            "host": urlsplit(host, "https://").geturl() if host else "",
         }, f, indent=2)
     console.print(f"[green]Config saved to '{pathlib.Path('config.json')}'[/]")
 
