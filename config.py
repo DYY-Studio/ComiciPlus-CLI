@@ -15,13 +15,19 @@ def set(
     """
     Write config to `config.json`
     """
-    with open("config.json", "r", encoding="utf-8") as f:
-        json.dump({
-            "cookies": cookies,
-            "proxy": proxy,
-            "user_agent": user_agent,
-            "host": urlsplit(host, "https://").geturl() if host else "",
-        }, f, indent=2)
+    config = dict()
+    if pathlib.Path("config.json").exists():
+        with open("config.json", "r", encoding="utf-8") as f:
+            if pathlib.Path(cookies).stat().st_size > 0:
+                config.update(json.load(f))
+                
+    if cookies: config["cookies"] = cookies
+    if proxy: config["proxy"] = proxy
+    if user_agent: config["user_agent"] = user_agent
+    if host: config["host"] = urlsplit(host, "https://").geturl()
+    
+    with open("config.json", "w", encoding="utf-8") as f:
+        json.dump(config, f, indent=2)
     console.print(f"[green]Config saved to '{pathlib.Path('config.json')}'[/]")
 
 @app.command()
