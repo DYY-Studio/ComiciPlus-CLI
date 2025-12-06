@@ -1,6 +1,7 @@
 from client import ComiciClient
 from utils import getLegalPath
 import typer, pathlib, time, config, zipfile
+from typing import Annotated, Literal
 from urllib.parse import urlsplit
 from rich.console import Console
 from rich.table import Table, Column
@@ -14,23 +15,51 @@ client = ComiciClient()
 @app.command()
 def search(
     keyword: str, 
-    host: str = typer.Argument("", help="Host of any comic site powered by Comici(コミチ)")
+    page: int = typer.Option(0, min = 0, help="Page number when too many results to show against the limit"),
+    size: int = typer.Option(30, min = 0, help="Limit of results to show"),
+    _filter: Literal["series", "seriesofauthors", "articles"] = typer.Option(
+        "series", "--filter", help="Filter type. Articles == Episodes"
+    ),
 ):
-    results = client.search(keyword)
-    table = Table(
-        "Series ID", 
-        Column("Title", overflow="fold"), 
-        "Authors", 
-        title="Search Results", 
-        show_lines=True
+    results, has_next_page = client.search(
+        keyword,
+        page=page, 
+        size=size, 
+        _filter=_filter
     )
-    for result in results:
-        table.add_row(
-            urlsplit(result.href).path.rstrip("/").split("/")[-1], 
-            result.title, 
-            "\n".join(result.author)
+    if not results:
+        console.print("[red]No results[/]")
+    
+    if _filter == "articles":
+        table = Table(
+            "Episode ID", 
+            Column("Title", overflow="fold"), 
+            title=f"Search Results (Filter: {_filter}, Page: {page}, Limit: {size})", 
+            show_lines=True
         )
+        for result in results:
+            table.add_row(
+                urlsplit(result.href).path.rstrip("/").split("/")[-1], 
+                result.title
+            )
+    else:
+        table = Table(
+            "Series ID", 
+            Column("Title", overflow="fold"), 
+            "Authors", 
+            title=f"Search Results (Filter: {_filter}, Page: {page}, Limit: {size})", 
+            show_lines=True
+        )
+        for result in results:
+            table.add_row(
+                urlsplit(result.href).path.rstrip("/").split("/")[-1], 
+                result.title, 
+                "\n".join(result.author)
+            )
     console.print(table)
+
+    if has_next_page: 
+        console.print("[yellow]There are more results, use `--page` and `--size` to show more[/]")
 
 def load_cookies(cookies: str = ""):
     global client
@@ -47,7 +76,7 @@ def load_cookies(cookies: str = ""):
 @app.command()
 def episodes(
     series_id: str, 
-    sort: int = typer.Option(2, min = 1, max = 2, help="1: Newest first, 2: Oldest first"), 
+    sort: Literal[1,2] = typer.Option(2, help="1: Newest first, 2: Oldest first"), 
     page: int = typer.Option(0, min = 0, help="Page number when too many episodes to show against the limit"), 
     limit: int = typer.Option(50, min = 0, help="Limit of episodes to show"), 
     cookies: str = typer.Option("", help="Path to your cookies.json, should use Cookie-Editor JSON format"), 
@@ -71,7 +100,7 @@ def episodes(
         Column("Title", overflow="fold"), 
         "Symbols", 
         "Update Date", 
-        title="Paging List", 
+        title=f"Paging List (Page {page}, Limit {limit})", 
         show_lines=True
     )
     for episode in paging_list:
@@ -269,7 +298,7 @@ def download_series(
     paging_list, has_next_page = client.series_pagingList(
         series_id=series_id,
     )
-    
+
     while has_next_page:
         page += 1
         paging_list_cache, has_next_page = client.series_pagingList(

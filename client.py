@@ -1,4 +1,5 @@
 import httpx, pathlib, json, math, io, datetime, sys
+from typing import Literal
 from bs4 import BeautifulSoup as bs
 from urllib.parse import urljoin, urlsplit
 from PIL import Image
@@ -40,7 +41,7 @@ class ComiciClient:
     def __init__(
             self, 
             cookies: dict[str, str] | str | pathlib.Path | None = None, 
-            user_id: int | None = None, 
+            user_id: int | str | None = None, 
             proxy: str | None = None, 
             user_agent: str | None = None,
             host: str | None = None,
@@ -104,10 +105,21 @@ class ComiciClient:
         else:
             raise FileNotFoundError("Cookies file not found")
 
-    def search(self, keyword: str) -> list[MangaStoreItem]:
+    def search(
+        self, 
+        keyword: str, 
+        page: int = 0, 
+        size: int = 30, 
+        _filter: Literal["series", "seriesofauthors", "articles"] = "series"
+    ) -> tuple[list[MangaStoreItem], bool]:
         response = self.main_client.get(
             urljoin(self.HOST, "/search"),
-            params={"keyword": keyword}
+            params={
+                "keyword": keyword,
+                "page": page,
+                "size": size,
+                "filter": _filter
+            }
         )
         response.raise_for_status()
 
@@ -119,15 +131,27 @@ class ComiciClient:
         if user_id: self.user_id = user_id
 
         series_list = soup.find("div", {"class": "series-list"})
+        if not series_list: return resultList, False
         for manga_item in series_list.find_all("div", {"class": "manga-store-item"}):
             link = manga_item.find("a")
             resultList.append(MangaStoreItem(
-                href=link["href"],
-                title=link.find("h2", {"class": "manga-title"}).text.strip('\n\t'),
-                author=link.find("span", {"class": "manga-author"}).text.strip('\n').split('\n')
+                href=link["href"] if link.has_attr("href") else link['data-href'],
+                title=manga_item.find("h2", {"class": "manga-title"}).text.strip('\n\t '),
+                author=link.find("span", {"class": "manga-author"}).text.strip('\n ').split('\n') if _filter != "articles" else "",
             ))
         
-        return resultList
+        has_next_page = False
+        pages_list = soup.find("ul", {"class": "mode-paging"})
+        if not pages_list: 
+            return resultList, False
+
+        for img in pages_list.find_all("img"):
+            if img.has_attr("data-src") or img.has_attr("src"):
+                if "paging_next" in img["data-src"] if img.has_attr("data-src") else img["src"]:
+                    has_next_page = True
+                    break
+        
+        return resultList, has_next_page
     
     def series_pagingList(self, href: str | None = None, series_id: str | None = None, sort: int = 2, page: int = 0, limit: int = 50) -> tuple[list[MangaEpisodeItem], bool]:
         if not href and not series_id: 
