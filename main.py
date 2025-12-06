@@ -1,16 +1,20 @@
-from client import ComicGrowlClient
-import typer, pathlib, time
+from client import ComiciClient
+import typer, pathlib, time, config
 from urllib.parse import urlsplit
 from rich.console import Console
 from rich.table import Table, Column
 from rich.progress import track
 
 app = typer.Typer(rich_markup_mode="markdown")
+app.add_typer(config.app, name="config")
 console = Console()
-client = ComicGrowlClient()
+client = ComiciClient()
 
 @app.command()
-def search(keyword: str):
+def search(
+    keyword: str, 
+    host: str = typer.Argument("", help="Host of any comic site powered by Comici(コミチ)")
+):
     results = client.search(keyword)
     table = Table(
         "Series ID", 
@@ -81,9 +85,10 @@ def episodes(
 @app.command("detailed-episodes")
 def detailed_episodes(episode_id: str):
     """
-    Show detailed info of target episode
+    Show detailed info of all episodes in the series, but need one of episode_id to request
     """
     comici_viewer_id = client.episodes(episode_id=episode_id)
+    book_info = client.book_info(comici_viewer_id)
     episode_info = client.book_episodeInfo(comici_viewer_id)
 
     table = Table(
@@ -94,7 +99,7 @@ def detailed_episodes(episode_id: str):
         "No.", 
         "Publish Date", 
         "End Date", 
-        title="Episode Info", 
+        title=f"Episodes Info of {book_info.title}", 
         show_lines=True
     )
     for episode in episode_info:
@@ -113,7 +118,8 @@ def detailed_episodes(episode_id: str):
 
 @app.command("download-episode")
 def download_episode(
-    episode_id: str, 
+    episode_id: str = typer.Argument("", help="Episode ID"), 
+    comici_vierwe_id: str = typer.Option("", help="Comici Viewer ID"),
     cookies: str = "", 
     page_from: int = 0, 
     page_to: int = -1, 
@@ -122,7 +128,13 @@ def download_episode(
     wait_interval: float = typer.Option(0.5, help="Wait interval between each page download"),
 ):
     load_cookies(cookies)
-    comici_viewer_id = client.episodes(episode_id=episode_id)
+
+    if not comici_vierwe_id and not episode_id: 
+        console.print("[red]Must specify either episode_id or comici_viewer_id[/]")
+        typer.Abort()
+    
+    if not comici_vierwe_id:
+        comici_viewer_id = client.episodes(episode_id=episode_id)
     episodes_info = client.book_episodeInfo(comici_viewer_id)
     book_info = client.book_info(comici_viewer_id)
 
@@ -192,7 +204,7 @@ def download_series(
     for episode in paging_list:
         if episode.href and episode.symbols[0].split("\n")[0] in ("閲覧期限", "無料"):
             download_episode(
-                urlsplit(episode.href).path.rstrip("/").split("/")[-1],
+                episode_id=urlsplit(episode.href).path.rstrip("/").split("/")[-1],
                 save_dir=save_dir,
                 wait_interval=wait_interval
             )

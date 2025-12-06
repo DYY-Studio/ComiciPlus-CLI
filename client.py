@@ -4,21 +4,61 @@ from urllib.parse import urljoin, urlsplit
 from PIL import Image
 from structs import *
 
-class ComicGrowlClient:
+class ComiciClient:
     main_client: httpx.Client
     cdn_client: httpx.Client
     user_id: int | None
 
     HOST = "https://comic-growl.com"
-    USER_AGENT_DEFAULT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0"
+    CONFIG_PATH_DEFAULT = "config.json"
 
-    def __init__(self, cookies: dict[str, str] | str | pathlib.Path | None = None, user_id: int | None = None, proxy: str | None = None, user_agent: str | None = None):
+    USER_AGENT_DEFAULT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0"
+    PROXY_DEFAULT: str | None = None
+    COOKIES_DEFAULT: str | None = None
+
+    def load_dict_config(self, config: dict):
+        if "cookies" in config:
+            self.COOKIES_DEFAULT = config["cookies"]
+        if "proxy" in config:
+            self.PROXY_DEFAULT = config["proxy"]
+        if "user_agent" in config:
+            self.USER_AGENT_DEFAULT = config["user_agent"]
+        if "host" in config:
+            self.HOST = "https://" + urlsplit(config["host"]).hostname
+
+    def load_config_file(self, config_path: str | pathlib.Path = None):
+        if not config_path: 
+            config_path = self.CONFIG_PATH_DEFAULT
+        else:
+            config_path = pathlib.Path(config_path)
+            if not config_path.exists() or not config_path.is_file(): 
+                return
+        
+        with open(config_path, "r", encoding="utf-8") as f:
+            self.load_dict_config(json.load(f))
+
+    def __init__(
+            self, 
+            cookies: dict[str, str] | str | pathlib.Path | None = None, 
+            user_id: int | None = None, 
+            proxy: str | None = None, 
+            user_agent: str | None = None,
+            host: str | None = None,
+            custom_config_path: str | pathlib.Path | None = None,
+        ):
+
+        self.load_config_file(custom_config_path if custom_config_path else "")
+
         self.user_id = user_id
         self.main_client = httpx.Client(
             headers={"User-Agent": user_agent if user_agent else self.USER_AGENT_DEFAULT},
-            proxy=proxy, 
+            proxy=proxy if proxy else self.PROXY_DEFAULT, 
             transport=httpx.HTTPTransport(retries=3)
         )
+
+        if host:
+            self.HOST = "https://" + urlsplit(host).hostname
+
         self.cdn_client = httpx.Client(
             headers={
                 "User-Agent": user_agent if user_agent else self.USER_AGENT_DEFAULT,
@@ -258,14 +298,14 @@ class ComicGrowlClient:
     
     def get_and_descramble_image(self, contentsInfo: ContentsInfo, episode_id: str) -> Image.Image:
         self.cdn_client.headers.update({
-            "Referer": f"https://comic-growl.com/episodes/{episode_id}/"
+            "Referer": urljoin(self.HOST, f"/episodes/{episode_id}/")
         })
         response = self.cdn_client.get(
             contentsInfo.imageUrl
         )
         response.raise_for_status()
 
-        return ComicGrowlClient.descramble_image(
+        return ComiciClient.descramble_image(
             response.content, 
             contentsInfo.scramble
         )
