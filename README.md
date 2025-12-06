@@ -75,5 +75,6 @@ MIT
 # 依赖
 * [typer](https://github.com/tiangolo/typer)
 * [rich](https://github.com/Textualize/rich)
-* [bs4](https://github.com/BeautifulSoup/bs4)
+* [bs4](https://www.crummy.com/software/BeautifulSoup/bs4/)
 * [httpx](https://github.com/encode/httpx)
+* [pillow](https://github.com/python-pillow/Pillow)
