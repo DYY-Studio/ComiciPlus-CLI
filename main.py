@@ -1,4 +1,5 @@
 from client import ComiciClient
+from utils import getLegalPath
 import typer, pathlib, time, config, zipfile
 from urllib.parse import urlsplit
 from rich.console import Console
@@ -179,7 +180,7 @@ def download_episode(
     )
 
     save_dir_path = pathlib.Path(save_dir)
-    save_dir_path = save_dir_path / book_info.title / episode_info.name
+    save_dir_path = save_dir_path / getLegalPath(book_info.title) / getLegalPath(episode_info.name)
     save_dir_path.mkdir(parents=True, exist_ok=True)
 
     filename_just = len(str(page_to)) + 1
@@ -187,7 +188,7 @@ def download_episode(
     console.print(f"[green] Downloading episode '{episode_info.name}' of '{book_info.title}'[/]")
 
     if cbz:
-        cbz_file_path = save_dir_path.parent / f"{episode_info.name}.cbz"
+        cbz_file_path = save_dir_path.parent / f"{getLegalPath(episode_info.name)}.cbz"
         cbz_file = zipfile.ZipFile(
             str(cbz_file_path),
             "a" if cbz_file_path.exists() else "w"
@@ -253,7 +254,10 @@ def download_series(
         if urlsplit(client.HOST).hostname in urlsplit(series_id).hostname:
             series_id = urlsplit(series_id).path.rstrip("/").split("/")[-1]
         else:
-            console.print("[red]Invalid series ID[/]")
+            if urlsplit(client.HOST).hostname not in urlsplit(series_id).hostname:
+                console.print(f"[red]Invalid series ID: Hostname mismatch[/]")
+            else:
+                console.print("[red]Invalid series ID[/]")
             typer.Abort()
             return
 
@@ -282,8 +286,8 @@ def download_series(
                 episode_id=urlsplit(episode.href).path.rstrip("/").split("/")[-1],
                 save_dir=save_dir,
                 cbz=cbz,
-                lossless_webp=ls_webp,
-                png_compression=compression,
+                ls_webp=ls_webp,
+                compression=compression,
                 wait_interval=wait_interval,
                 overwrite = overwrite
             )
