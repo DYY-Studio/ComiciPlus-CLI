@@ -24,7 +24,7 @@ def set(
     if cookies: config["cookies"] = cookies
     if proxy: config["proxy"] = proxy
     if user_agent: config["user_agent"] = user_agent
-    if host: config["host"] = urlsplit(host, "https://").geturl()
+    if host: config["host"] = "https://" + (urlsplit(host).hostname if urlsplit(host).hostname else host)
     
     with open("config.json", "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2)

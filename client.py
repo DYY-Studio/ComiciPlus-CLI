@@ -25,15 +25,16 @@ class ComiciClient:
         if "user_agent" in config:
             self.USER_AGENT_DEFAULT = config["user_agent"]
         if "host" in config:
-            self.HOST = "https://" + urlsplit(config["host"]).hostname
+            self.HOST = "https://" + (urlsplit(config["host"]).hostname if urlsplit(config["host"]).hostname else config["host"])
 
     def load_config_file(self, config_path: str | pathlib.Path = None):
         if not config_path: 
-            config_path = self.CONFIG_PATH_DEFAULT
+            config_path = pathlib.Path(self.CONFIG_PATH_DEFAULT)
         else:
             config_path = pathlib.Path(config_path)
-            if not config_path.exists() or not config_path.is_file(): 
-                return
+        
+        if not config_path.exists() or not config_path.is_file(): 
+            return
         
         with open(config_path, "r", encoding="utf-8") as f:
             self.load_dict_config(json.load(f))
@@ -71,7 +72,8 @@ class ComiciClient:
                 "priority": "u=5, i",
                 "te": "trailers",
             },
-            transport=httpx.HTTPTransport(retries=3)
+            transport=httpx.HTTPTransport(retries=3),
+            proxy=proxy if proxy else self.PROXY_DEFAULT,
         )
 
         if cookies is None: return
