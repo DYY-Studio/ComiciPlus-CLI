@@ -199,7 +199,7 @@ class ComiciClient:
         if user_id: self.user_id = user_id
 
         comici_viewer = content_box_detail.find("div", {"id": "comici-viewer"})
-        assert comici_viewer
+        if not comici_viewer: return ""
         return comici_viewer["comici-viewer-id"]
     
     def book_info(self, comici_viewer_id: str) -> Info:

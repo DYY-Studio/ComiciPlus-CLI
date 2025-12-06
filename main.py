@@ -41,6 +41,7 @@ def load_cookies(cookies: str = ""):
         else: 
             console.print(f"[red]Cookies file not found: '{cookies}'[/]")
             typer.Abort()
+            return
 
 @app.command()
 def episodes(
@@ -88,6 +89,10 @@ def detailed_episodes(episode_id: str):
     Show detailed info of all episodes in the series, but need one of episode_id to request
     """
     comici_viewer_id = client.episodes(episode_id=episode_id)
+    if not comici_viewer_id: 
+        console.print(f"[red]Cannot access episode {episode_id}[/]")
+        typer.Abort()
+        return
     book_info = client.book_info(comici_viewer_id)
     episode_info = client.book_episodeInfo(comici_viewer_id)
 
@@ -118,27 +123,41 @@ def detailed_episodes(episode_id: str):
 
 @app.command("download-episode")
 def download_episode(
-    episode_id: str = typer.Argument("", help="Episode ID"), 
-    comici_vierwe_id: str = typer.Option("", help="Comici Viewer ID"),
+    episode_id: str = typer.Argument(help="Episode ID (13 chars) or Comici Viewer ID (32 chars)"), 
     cookies: str = "", 
     page_from: int = 0, 
-    page_to: int = -1, 
+    page_to: int = -1,
     save_dir: str = "",
     overwrite: bool = typer.Option(False, help="Overwrite existing files"),
     wait_interval: float = typer.Option(0.5, help="Wait interval between each page download"),
 ):
     load_cookies(cookies)
 
-    if not comici_vierwe_id and not episode_id: 
-        console.print("[red]Must specify either episode_id or comici_viewer_id[/]")
+    if len(episode_id) not in (13, 32):
+        console.print("[red]Invalid episode ID[/]")
         typer.Abort()
+        return
     
-    if not comici_vierwe_id:
+    if len(episode_id) == 13:
         comici_viewer_id = client.episodes(episode_id=episode_id)
+        if not comici_viewer_id: 
+            console.print(f"[red]Cannot access episode {episode_id}[/]")
+            typer.Abort()
+            return
+        console.print(f"[green]Detected Episode ID: '{episode_id}'[/]")
+    else:
+        comici_viewer_id = episode_id
+        console.print(f"[green]Detected Comici Viewer ID: '{episode_id}'[/]")
     episodes_info = client.book_episodeInfo(comici_viewer_id)
     book_info = client.book_info(comici_viewer_id)
 
-    episode_info = [episode for episode in episodes_info if episode._id == comici_viewer_id][0]
+    episode_infos = [episode for episode in episodes_info if episode._id == comici_viewer_id]
+    if not episode_infos: 
+        console.print("[red]Episode not found[/]")
+        typer.Abort()
+        return
+    
+    episode_info = episode_infos[0]
 
     page_to = int(episode_info.page_count) if page_to < 0 or page_to > int(episode_info.page_count) else page_to
     page_from = 0 if page_from < 0 or page_from > page_to else page_from
@@ -162,7 +181,7 @@ def download_episode(
         filename = "{}.png".format(str(contents.sort + 1).rjust(filename_just, '0'))
         save_full_path = save_dir_path / filename
 
-        if save_full_path.exists() and overwrite: continue
+        if save_full_path.exists() and not overwrite: continue
 
         client.get_and_descramble_image(contents, episode_id).save(
             save_full_path,
@@ -178,11 +197,12 @@ def download_series(
     series_id: str, 
     cookies: str = "",
     save_dir: str = "",
+    overwrite: bool = typer.Option(False, help="Overwrite existing files"),
     wait_interval: float = typer.Option(0.5, help="Wait interval between each page download")
 ):
     load_cookies(cookies)
 
-    console.print(f"[green] Downloading series '{series_id}'[/]")
+    console.print(f"[green]Downloading series '{series_id}'[/]")
 
     page = 0
     paging_list = client.series_pagingList(
@@ -202,11 +222,12 @@ def download_series(
     console.print(f"[green] Found {len(paging_list)} episodes[/]")
 
     for episode in paging_list:
-        if episode.href and episode.symbols[0].split("\n")[0] in ("閲覧期限", "無料"):
+        if episode.href and episode.symbols[0].split("\n")[0] in ("閲覧期限", "無料", "今なら無料"):
             download_episode(
                 episode_id=urlsplit(episode.href).path.rstrip("/").split("/")[-1],
                 save_dir=save_dir,
-                wait_interval=wait_interval
+                wait_interval=wait_interval,
+                overwrite = overwrite
             )
         else:
             console.print(f"[yellow] Episode '{episode.title}' is not available for your account[/]")
