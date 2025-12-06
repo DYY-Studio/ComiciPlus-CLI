@@ -250,7 +250,7 @@ class ComiciClient:
             urljoin(self.HOST, "/series/list"),
             params={
                 "page": page if page >= 0 else 0,
-                "sort": "更新順" if sort == "更新順" else "新作順"
+                "sortType": "更新順" if sort == "更新順" else "新作順"
             }
         )
         response.raise_for_status()
