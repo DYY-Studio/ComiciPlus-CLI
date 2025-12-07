@@ -293,10 +293,16 @@ class ComiciClient:
                             authors.append(Author(author.text.strip('\t\n '), ""))
             else:
                 authors.append(Author("", ""))
+
+            title_h2 = manga_item.find("h2", {"class": "manga-title"})
+            if title_h2.contents:
+                title = title_h2.contents[-1].text.strip('\n\t ')
+            else:
+                title = title_h2.text.strip('\n\t ')
             
             resultList.append(MangaStoreItem(
                 href=link["href"] if link.has_attr("href") else link['data-href'],
-                title=manga_item.find("h2", {"class": "manga-title"}).text.strip('\n\t '),
+                title=title,
                 author=authors,
             ))
         

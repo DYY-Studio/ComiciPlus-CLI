@@ -163,7 +163,7 @@ def search(
         "series", "--filter", help="Filter type. Articles == Episodes"
     ),
 ):
-    if client.is_supported_version(): 
+    if not client.NEW_VERSION: 
         results, has_next_page = client.search(
             keyword,
             page=page, 
