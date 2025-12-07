@@ -28,7 +28,10 @@ def bookshelf(
 ):
     if cookies: 
         client.update_cookies_from_CookieEditorJson(cookies)
-    results, has_next_page = client.bookshelf(
+    results, has_next_page = client.api_bookshelf(
+        page=page, 
+        bookshelf_type=bookshelf_type
+    ) if client.NEW_VERSION else client.bookshelf(
         page=page, 
         bookshelf_type=bookshelf_type
     )
@@ -72,6 +75,7 @@ def author(
         "Authors", 
         "Author IDs",
         title=f"Author Series (Author ID: {author_id}, Page: {page})", 
+        show_lines=True
     )
     for result in results:
         table.add_row(
@@ -97,6 +101,8 @@ def series_list(
     )
     if not results:
         console.print("[red]No results[/]")
+        typer.Abort()
+        return
 
     has_author_ids = False
     for result in results:

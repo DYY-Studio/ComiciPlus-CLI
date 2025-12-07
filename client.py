@@ -127,7 +127,7 @@ class ComiciClient:
                     self.main_client.cookies.update({item['name']: item['value'] for item in json_dict})
 
                     if self.NEW_VERSION:
-                        self.user_id, user_name = self.api_episodes()
+                        self.user_id, user_name = self.api_popups()
                         if not self.user_id or not user_name:
                             raise ValueError("Cookies invalid, please update your cookies")
                 else:
@@ -212,21 +212,33 @@ class ComiciClient:
                 last_update = article.find("div", {"class": "date-info"}).text.strip("\n\t "),
             ))
 
-        return resultList, self.has_next_page(soup)
+        return resultList, self.has_next_page(soup, self.NEW_VERSION)
     
     @staticmethod
-    def has_next_page(soup: bs):
-        pages_list = soup.find("ul", {"class": "mode-paging"})
-        if not pages_list: 
-            return False
-
+    def has_next_page(soup: bs, new_version: bool = False):
         has_next_page = True
-        for li in pages_list.find_all("li"):
-            if li.has_attr("class") and "mode-paging-active" in li["class"]:
-                has_next_page = False
-            elif not has_next_page:
-                has_next_page = True
-                break
+        if new_version:
+            pages_list = soup.find("div", {"class": "g-pager"})
+            if not pages_list: 
+                return False
+            
+            for a in pages_list.find_all("a"):
+                if a.has_attr("class") and "mode-active" in a["class"]: 
+                    has_next_page = False
+                elif not has_next_page: 
+                    has_next_page = True
+                    break
+        else:
+            pages_list = soup.find("ul", {"class": "mode-paging"})
+            if not pages_list: 
+                return False
+
+            for li in pages_list.find_all("li"):
+                if li.has_attr("class") and "mode-paging-active" in li["class"]:
+                    has_next_page = False
+                elif not has_next_page:
+                    has_next_page = True
+                    break
 
         return has_next_page
 
@@ -288,13 +300,36 @@ class ComiciClient:
                 author=authors,
             ))
         
-        return resultList, ComiciClient.has_next_page(soup)
+        return resultList, ComiciClient.has_next_page(soup, self.NEW_VERSION)
+    
+    def _new_version_series_list_parse(self, soup: bs) -> list[MangaStoreItem]:
+        series_list = soup.find("div", {"class": "series-list"})
+        if not series_list: return list()
+
+        resultList = list()
+        for series in series_list.find_all("div", {"class": "series-list-item"}):
+            item = series.find("a", {"class": "series-list-item-link"})
+            authors_div = series.find("div", {"class": "series-list-item-author"})
+            authors: list[Author] = [
+                Author(
+                    name = "".join(a.text.strip('\n\t ').split("\n")), 
+                    href = urljoin(self.HOST, a["href"])
+                ) for a in authors_div.find_all("a", {"class": "series-list-item-author-link"})
+            ]
+
+            resultList.append(MangaStoreItem(
+                href = urljoin(self.HOST, item["href"]),
+                title = item.find("img", {"class": "series-list-item-img"})['alt'],
+                author = authors,
+            ))
+
+        return resultList
     
     def author(
         self,
         author_id: str,
         page: int = 0,
-    ): 
+    ) -> tuple[list[MangaStoreItem], bool]: 
         response = self.main_client.get(
             urljoin(self.HOST, f"/authors/{author_id}"),
             params={
@@ -307,24 +342,27 @@ class ComiciClient:
 
         soup = bs(response.text, "html.parser")
 
-        series_list = soup.find("div", {"class": "authors-series-list"})
-        if not series_list: return resultList, False
+        if self.NEW_VERSION:
+            resultList = self._new_version_series_list_parse(soup)
+        else:
+            series_list = soup.find("div", {"class": "authors-series-list"})
+            if not series_list: return resultList, False
 
-        for manga_store_item in series_list.find_all("div", {"class": "manga-store-item"}):
-            link = manga_store_item.find("a")
-            authors: list[Author] = list()
-            author_div = manga_store_item.find("div", {"class": "author"})
+            for manga_store_item in series_list.find_all("div", {"class": "manga-store-item"}):
+                link = manga_store_item.find("a")
+                authors: list[Author] = list()
+                author_div = manga_store_item.find("div", {"class": "author"})
 
-            for author in author_div.find_all("a"):
-                authors.append(Author(author.text.strip('\t\n '), author["href"]))
-            
-            resultList.append(MangaStoreItem(
-                href=link["href"] if link.has_attr("href") else link['data-href'],
-                title=manga_store_item.find("div", {"class": "title-text"}).text.strip('\n\t '),
-                author=authors,
-            ))
+                for author in author_div.find_all("a"):
+                    authors.append(Author(author.text.strip('\t\n '), author["href"]))
+                
+                resultList.append(MangaStoreItem(
+                    href=link["href"] if link.has_attr("href") else link['data-href'],
+                    title=manga_store_item.find("div", {"class": "title-text"}).text.strip('\n\t '),
+                    author=authors,
+                ))
         
-        return resultList, ComiciClient.has_next_page(soup)
+        return resultList, ComiciClient.has_next_page(soup, self.NEW_VERSION)
     
     def series_list(
         self,
@@ -351,26 +389,11 @@ class ComiciClient:
 
         soup = bs(response.text, "html.parser")
 
-        series_list = soup.find("div", {"class": "series-list"})
-        if not series_list: return resultList, False
-
         if self.NEW_VERSION:
-            for series in series_list.find_all("div", {"class": "series-list-item"}):
-                item = series.find("a", {"class": "series-list-item-link"})
-                authors_div = series.find("div", {"class": "series-list-item-author"})
-                authors: list[Author] = [
-                    Author(
-                        name = "".join(a.text.strip('\n\t ').split("\n")), 
-                        href = urljoin(self.HOST, a["href"])
-                    ) for a in authors_div.find_all("a", {"class": "series-list-item-author-link"})
-                ]
-
-                resultList.append(MangaStoreItem(
-                    href = urljoin(self.HOST, item["href"]),
-                    title = item.find("img", {"class": "series-list-item-img"})['alt'],
-                    author = authors,
-                ))
+            resultList = self._new_version_series_list_parse(soup)
         else:
+            series_list = soup.find("div", {"class": "series-list"})
+            if not series_list: return resultList, False
             for series in series_list.find_all("div", {"class": "series-box-vertical"}):
                 article = series.find("div", {"class": "article-text"})
                 title = article.find("h2", {"class": "title-text"}).text.strip('\n\t ')
@@ -404,7 +427,7 @@ class ComiciClient:
                     author=authors
                 ))
 
-        return resultList, ComiciClient.has_next_page(soup)
+        return resultList, ComiciClient.has_next_page(soup, self.NEW_VERSION)
     
     def series_pagingList(self, href: str | None = None, series_id: str | None = None, sort: int = 2, page: int = 0, limit: int = 50) -> tuple[list[MangaEpisodeItem], bool]:
         if not href and not series_id: 
@@ -557,7 +580,7 @@ class ComiciClient:
         return [ContentsInfo(**r) for r in resJson["result"]], resJson.get("totalPages", 0)
     
     def api_user_info(self) -> tuple[str | None, str | None]:
-        """Only avaliable for new version Comici"""
+        """Only avaliable for new version Comici, raise 403 if haven't login"""
         response = self.main_client.get(
             urljoin(self.HOST, "/api/user/info"),
         )
@@ -576,7 +599,60 @@ class ComiciClient:
 
         resJson = response.json()
 
-        return resJson['topPopup'].get("userId"), resJson['user'].get("userName")
+        return resJson['topPopup'].get("userId"), resJson['topPopup'].get("userName")
+    
+    def api_bookshelf(self, page: int = 1, bookshelf_type: Literal["", "favorite", "buying", "liking"] = "") -> tuple[list[BookshelfItem], bool]:
+
+        if bookshelf_type in ("buying", "liking"):
+            raise Exception("Unsupported bookshelf type so far")
+        
+        self.user_id, user_name = self.api_popups()
+        if not self.user_id or not user_name: 
+            raise Exception("Cannot get user info")
+
+        _new_type_match = {
+            "": "/series/viewedHistory",
+            "favorite": "/series/favorite",
+            "buying": "/episodes/rentalHistories",
+            "liking": "/episodes/liked"
+        }
+        if page < 1: page = 1
+
+        response = self.main_client.get(
+            urljoin(self.HOST, f"/api{_new_type_match[bookshelf_type]}"),
+            params={
+                "page": page,
+            }
+        )
+        response.raise_for_status()
+
+        _tag_match = {
+            "": "viewedSeries",
+            "favorite": "favoriteSeries",
+            "buying": "episodeRentalHistories",
+            "liking": "likedEpisodes"
+        }
+
+        resJson = response.json()
+        lastPage = resJson['lastPage']
+        
+        resJson = resJson[_tag_match[bookshelf_type]]
+
+        resultList = list()
+
+        if resJson['totalCount'] == 0:
+            return resultList, False
+
+        if bookshelf_type in ("", "favorite"):
+            for item in resJson[_tag_match[bookshelf_type]]:
+                summary = item['seriesSummary']
+                resultList.append(BookshelfItem(
+                    href = urljoin(self.HOST, f"/series/{summary['id']}"),
+                    title = summary['name'],
+                    last_update = datetime.datetime.fromtimestamp(summary['updatedOn']).strftime("%Y/%m/%d %H:%M:%S")
+                ))
+
+        return resultList, lastPage > page
     
     @staticmethod
     def _authors_format(authors: list[dict]) -> list[Author]:
