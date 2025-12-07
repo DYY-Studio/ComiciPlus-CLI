@@ -259,7 +259,7 @@ def episodes(
     """
     load_cookies(cookies)
     
-    if client.is_supported_version(): 
+    if not client.NEW_VERSION: 
         paging_list, has_next_page = client.series_pagingList(
             series_id=series_id,
             sort=sort, 
@@ -511,7 +511,7 @@ def download_series(
 
     page = 0
 
-    if client.is_supported_version():
+    if not client.NEW_VERSION:
         series_pagingList: Callable = client.series_pagingList
     else:
         series_pagingList: Callable = client.new_series_pagingList

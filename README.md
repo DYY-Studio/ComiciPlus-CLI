@@ -24,13 +24,16 @@
 6. 运行 `python main.py --help` 查看帮助
 
 # 配置网站
-本工具支持所有基于Comici的漫画网站，需要各位手动设置自己想要使用的网站
+本工具基本支持所有基于Comici的漫画网站，需要各位手动设置自己想要使用的网站
 
 * `main.py config set --host <HOST>`
 
 例如
 * `main.py config set --host https://comic-growl.com`
 * `main.py config set --host comic-growl.com`
+
+## 不完全支持站点
+* [コミチ](https://comici.jp) 本家，仅支持搜索
 
 # 基本使用
 * `search`

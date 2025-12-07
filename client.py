@@ -453,7 +453,8 @@ class ComiciClient:
                 "s": sort,
                 "page": page,
                 "limit": limit
-            }
+            },
+            follow_redirects=True,
         )
         response.raise_for_status()
 
@@ -521,14 +522,14 @@ class ComiciClient:
         if user_id: self.user_id = user_id.text
 
         comici_viewer = soup.find("div", {"id": "comici-viewer"})
-        if not comici_viewer: return ""
+        if not comici_viewer: return "", ""
 
         if comici_viewer.has_attr("comici-viewer-id"):
             return comici_viewer["comici-viewer-id"], comici_viewer.get("series-id", "")
         elif comici_viewer.has_attr("data-comici-viewer-id"): 
             return comici_viewer["data-comici-viewer-id"], comici_viewer.get("data-series-id", "")
         else: 
-            return ""
+            return "", ""
     
     def book_info(self, comici_viewer_id: str) -> Info:
         response = self.main_client.get(
