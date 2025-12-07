@@ -10,6 +10,7 @@ from rich.progress import track
 
 app = typer.Typer(rich_markup_mode="markdown")
 app.add_typer(config.app, name="config")
+
 console = Console()
 client = ComiciClient()
 
@@ -24,6 +25,7 @@ def user():
         user_id, user_name = client.get_user_id_and_name()
     if not user_id: 
         console.print("[red]You are not logged in[/]")
+        typer.Abort()
         return
     console.print(f"[green]UserID: {user_id}, Name: {user_name}[/]")
     console.print(f"[green]You are accessing site: {client.HOST} {'(NEW Comici+)' if client.NEW_VERSION else ''}[/]")
