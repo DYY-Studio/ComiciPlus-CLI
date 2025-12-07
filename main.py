@@ -284,34 +284,39 @@ def detailed_episodes(episode_id: str):
     """
     Show detailed info of all episodes in the series, but need one of episode_id to request
     """
-    comici_viewer_id = client.episodes(episode_id=episode_id)
+    comici_viewer_id, series_id = client.episodes(episode_id=episode_id)
     if not comici_viewer_id: 
         console.print(f"[red]Cannot access episode {episode_id}[/]")
         typer.Abort()
         return
-    book_info = client.book_info(comici_viewer_id)
-    episode_info = client.book_episodeInfo(comici_viewer_id)
+    
+    if client.NEW_VERSION:
+        book_info, episode_info = client.new_book_info_and_episode_info(series_id)
+    else:
+        book_info = client.book_info(comici_viewer_id)
+        episode_info = client.book_episodeInfo(comici_viewer_id)
 
     table = Table(
-        "Comici Viewer ID", 
+        "Episode ID" if client.NEW_VERSION else "Comici Viewer ID", 
         Column("Title", overflow="fold"), 
-        Column("Description", overflow="fold"), 
+        # Column("Description", overflow="fold"), 
         "Pages", 
         "No.", 
         "Publish Date", 
         "End Date", 
-        title=f"Episodes Info of {book_info.title}", 
+        title=f"Episodes Info of {book_info.title}",
+        caption="New version Comici cannot provide pages per episode" if client.NEW_VERSION else "", 
         show_lines=True
     )
     for episode in episode_info:
         publish_date = episode.publish_date.astimezone().strftime("%Y/%m/%d %H:%M:%S")
-        end_date = episode.end_date.astimezone().strftime("%Y/%m/%d %H:%M:%S") if episode.end_date.year < 9999 else "N/A"
+        end_date = episode.end_date.astimezone().strftime("%Y/%m/%d %H:%M:%S") if episode.end_date and episode.end_date.year < 9999 else "N/A"
         table.add_row(
             episode._id, 
             episode.name, 
-            episode.description, 
-            episode.page_count, 
-            episode.episode_number, 
+            # episode.description, 
+            str(episode.page_count), 
+            str(episode.episode_number), 
             publish_date, 
             end_date, 
         )
@@ -370,15 +375,16 @@ def download_episode(
             console.print("[red]New version Comici does not support Comici Viewer ID input[/]")
             typer.Abort()
             return
-        if not cookies and not client.user_id:
-            client.user_id, user_name = client.api_user_info()
-            time.sleep(0.1)
-            if not client.user_id or not user_name: 
-                console.print("[red]Cannot get user info[/]")
-                typer.Abort()
-                return
         contents_info, page_count = client.book_contentsInfo(comici_viewer_id, 0, 0, client.user_id)
-        book_info, episode_info = client.new_book_info_and_episode_info(series_id, episode_index=-1, episode_id=episode_id)
+        book_info, episode_infos = client.new_book_info_and_episode_info(series_id)
+        for e_info in episode_infos:
+            if e_info._id == episode_id: 
+                episode_info = e_info
+                break
+        if not episode_info: 
+            console.print("[red]Episode not found[/]")
+            typer.Abort()
+            return
 
     page_to = page_count if page_to < 0 or page_to > page_count else page_to
     page_from = 0 if page_from < 0 or page_from > page_to else page_from
@@ -387,7 +393,7 @@ def download_episode(
         comici_viewer_id, 
         page_from, 
         page_to, 
-        client.user_id.strip() if client.user_id.strip() else "0"
+        client.user_id if client.user_id else "0"
     )
 
     save_dir_path = pathlib.Path(save_dir)

@@ -127,7 +127,7 @@ class ComiciClient:
                     self.main_client.cookies.update({item['name']: item['value'] for item in json_dict})
 
                     if self.NEW_VERSION:
-                        self.user_id, user_name = self.api_user_info()
+                        self.user_id, user_name = self.api_episodes()
                         if not self.user_id or not user_name:
                             raise ValueError("Cookies invalid, please update your cookies")
                 else:
@@ -331,13 +331,20 @@ class ComiciClient:
         page: int = 0,
         sort: Literal["更新順", "新作順"] = "更新順",
     ) -> tuple[list[MangaStoreItem], bool]:
-        response = self.main_client.get(
-            urljoin(self.HOST, "/series/list"),
-            params={
-                "page": page if page >= 0 else 0,
-                "sortType": "更新順" if sort == "更新順" else "新作順"
-            }
-        )
+        
+        if self.NEW_VERSION:
+            page += 1
+            response = self.main_client.get(
+                urljoin(self.HOST, f"/series/list/{'up' if sort == '更新順' else 'new'}/{page}"),
+            )
+        else:
+            response = self.main_client.get(
+                urljoin(self.HOST, "/series/list"),
+                params={
+                    "page": page if page >= 0 else 0,
+                    "sortType": "更新順" if sort == "更新順" else "新作順"
+                }
+            )
         response.raise_for_status()
 
         resultList: list[MangaStoreItem] = list()
@@ -345,38 +352,57 @@ class ComiciClient:
         soup = bs(response.text, "html.parser")
 
         series_list = soup.find("div", {"class": "series-list"})
-        for series in series_list.find_all("div", {"class": "series-box-vertical"}):
-            article = series.find("div", {"class": "article-text"})
-            title = article.find("h2", {"class": "title-text"}).text.strip('\n\t ')
-            link = series.find("a")
+        if not series_list: return resultList, False
 
-            if link.has_attr("href"):
-                href = link["href"]
-            elif link.has_attr("data-href"):
-                href = link['data-href']
-            else:
-                href = ""
+        if self.NEW_VERSION:
+            for series in series_list.find_all("div", {"class": "series-list-item"}):
+                item = series.find("a", {"class": "series-list-item-link"})
+                authors_div = series.find("div", {"class": "series-list-item-author"})
+                authors: list[Author] = [
+                    Author(
+                        name = "".join(a.text.strip('\n\t ').split("\n")), 
+                        href = urljoin(self.HOST, a["href"])
+                    ) for a in authors_div.find_all("a", {"class": "series-list-item-author-link"})
+                ]
 
-            authors: list[Author] = list()
-            author_div = series.find("div", {"class": "author"})
+                resultList.append(MangaStoreItem(
+                    href = urljoin(self.HOST, item["href"]),
+                    title = item.find("img", {"class": "series-list-item-img"})['alt'],
+                    author = authors,
+                ))
+        else:
+            for series in series_list.find_all("div", {"class": "series-box-vertical"}):
+                article = series.find("div", {"class": "article-text"})
+                title = article.find("h2", {"class": "title-text"}).text.strip('\n\t ')
+                link = series.find("a")
 
-            if len(author_div.contents) > 1:
-                for author in author_div.contents[1:]:
-                    name = author.text.strip('\n\t ')
-                    if not name: continue
-                    if author.name == "a" and author.has_attr("href"): 
-                        authors.append(Author(name.replace("\n", ""), author["href"]))
-                    else:
-                        if authors and authors[-1].name.endswith("/"):
-                            authors[-1].name = authors[-1].name + name
+                if link.has_attr("href"):
+                    href = link["href"]
+                elif link.has_attr("data-href"):
+                    href = link['data-href']
+                else:
+                    href = ""
+
+                authors: list[Author] = list()
+                author_div = series.find("div", {"class": "author"})
+
+                if len(author_div.contents) > 1:
+                    for author in author_div.contents[1:]:
+                        name = author.text.strip('\n\t ')
+                        if not name: continue
+                        if author.name == "a" and author.has_attr("href"): 
+                            authors.append(Author(name.replace("\n", ""), author["href"]))
                         else:
-                            authors.append(Author(name, ""))
+                            if authors and authors[-1].name.endswith("/"):
+                                authors[-1].name = authors[-1].name + name
+                            else:
+                                authors.append(Author(name, ""))
 
-            resultList.append(MangaStoreItem(
-                href=href,
-                title=title,
-                author=authors
-            ))
+                resultList.append(MangaStoreItem(
+                    href=href,
+                    title=title,
+                    author=authors
+                ))
 
         return resultList, ComiciClient.has_next_page(soup)
     
@@ -541,6 +567,17 @@ class ComiciClient:
 
         return resJson['user']['id'], resJson['user']['username']
     
+    def api_popups(self) -> tuple[str | None, str | None]:
+        """Only avaliable for new version Comici, safer than api_user_info"""
+        response = self.main_client.get(
+            urljoin(self.HOST, "/api/popups"),
+        )
+        response.raise_for_status()
+
+        resJson = response.json()
+
+        return resJson['topPopup'].get("userId"), resJson['user'].get("userName")
+    
     @staticmethod
     def _authors_format(authors: list[dict]) -> list[Author]:
         return [
@@ -634,30 +671,13 @@ class ComiciClient:
 
         return resultList, summary.numEpisodes > high
     
-    def new_book_info_and_episode_info(self, series_id: str, episode_index: int = 1, episode_id: str = "") -> tuple[Info, EpisodeInfo]:
-        if episode_index < 1 and episode_id: 
-            resJson = self.api_episodes(
-                series_id, 
-                episode_from=1, 
-                episode_to=self.new_series_summary(series_id).numEpisodes
-            )['series']
-            
-            episode = None
-            for i, e in enumerate(resJson['episodes']): 
-                if e['id'] == episode_id: 
-                    episode_index = i + 1
-                    episode = e
-                    break
-            if not episode: 
-                raise Exception("Episode not found")
-        else:
-            episode_index = 1
-            resJson = self.api_episodes(
-                series_id, 
-                episode_from=episode_index, 
-                episode_to=episode_index
-            )['series']
-            episode = resJson['episodes'][0] if resJson['episodes'] else None
+    def new_book_info_and_episode_info(self, series_id: str) -> tuple[Info, list[EpisodeInfo]]:
+        resJson = self.api_episodes(
+            series_id, 
+            episode_from=1, 
+            episode_to=self.new_series_summary(series_id).numEpisodes
+        )['series']
+        episodes = resJson['episodes'] if resJson['episodes'] else None
 
         summary = resJson['summary']
 
@@ -665,20 +685,20 @@ class ComiciClient:
             _id = summary['id'],
             title = summary['name'],
             thumb_image_url = summary['images'][0]['url'] if summary['images'] else "",
-            description = json.loads(summary['description'])[0]['children'][0]['text'],
+            description = json.loads(summary['description'])[0]['children'][0]['text'] if summary['description'] else "",
             publish_date = datetime.datetime.fromtimestamp(summary['publishDate']).strftime("%Y-%m-%d %H:%M:%S"),
             end_date = None,
             authors = ComiciClient._authors_format(summary['author']),
-        ), EpisodeInfo(
+        ), [EpisodeInfo(
             _id = episode['id'],
             name = episode['title'],
             description = "",
             thumb_image_url = episode['thumbnailImages'][0]['url'] if episode['thumbnailImages'] else "",
-            page_count = 0,
-            episode_number = episode_index,
+            page_count = "N/A",
+            episode_number = i + 1,
             publish_date = datetime.datetime.fromtimestamp(episode['datePublished']).strftime("%Y-%m-%d %H:%M:%S"),
             end_date = None
-        ) if episode else None
+        ) for i, episode in enumerate(episodes)] if episodes else None
 
     def api_search(
         self,
