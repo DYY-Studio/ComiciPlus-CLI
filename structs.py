@@ -49,11 +49,11 @@ class EpisodeInfo:
     page_count: str
     episode_number: str
     publish_date: datetime.datetime
-    end_date: datetime.datetime
+    end_date: datetime.datetime | None
 
     def __post_init__(self):
-        self.publish_date = datetime.datetime.fromisoformat(self.publish_date)
-        self.end_date = datetime.datetime.fromisoformat(self.end_date)
+        self.publish_date = datetime.datetime.fromisoformat(self.publish_date) if self.publish_date else None
+        self.end_date = datetime.datetime.fromisoformat(self.end_date) if self.end_date else None
 
 @dataclass
 class ContentsInfo:
@@ -67,3 +67,17 @@ class ContentsInfo:
     def __post_init__(self):
         self.scramble = json.loads(self.scramble)
         self.expiresOn = datetime.datetime.fromtimestamp(self.expiresOn / 1000)
+
+@dataclass
+class Tag:
+    _id: str
+    name: str
+
+@dataclass
+class SeriesSummary(MangaStoreItem):
+    numEpisodes: int
+
+@dataclass
+class NewMangaEpisodeItem(MangaEpisodeItem):
+    hasAccess: bool
+    accessType: str

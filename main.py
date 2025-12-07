@@ -1,7 +1,8 @@
 from client import ComiciClient
 from utils import getLegalPath
 import typer, pathlib, time, config, zipfile
-from typing import Annotated, Literal
+from structs import Info, EpisodeInfo
+from typing import Callable, Literal
 from urllib.parse import urlsplit
 from rich.console import Console
 from rich.table import Table, Column
@@ -11,6 +12,8 @@ app = typer.Typer(rich_markup_mode="markdown")
 app.add_typer(config.app, name="config")
 console = Console()
 client = ComiciClient()
+
+ACCESSABLE_SYMBOLS = ("閲覧期限", "無料", "今なら無料", "HAS")
 
 @app.command()
 def sites():
@@ -139,12 +142,22 @@ def search(
         "series", "--filter", help="Filter type. Articles == Episodes"
     ),
 ):
-    results, has_next_page = client.search(
-        keyword,
-        page=page, 
-        size=size, 
-        _filter=_filter
-    )
+    if client.is_supported_version(): 
+        results, has_next_page = client.search(
+            keyword,
+            page=page, 
+            size=size, 
+            _filter=_filter
+        )
+    else:
+        console.print("[yellow]You are accessing site that using new version Comici[/]")
+        console.print("[yellow]This progress may take more time[/]")
+        results, has_next_page = client.api_search(
+            keyword,
+            page=page + 1, 
+            size=size, 
+            _filter=_filter
+        )
     if not results:
         console.print("[red]No results[/]")
     
@@ -225,12 +238,24 @@ def episodes(
     """
     load_cookies(cookies)
     
-    paging_list, has_next_page = client.series_pagingList(
-        series_id=series_id,
-        sort=sort, 
-        page=page, 
-        limit=limit
-    )
+    if client.is_supported_version(): 
+        paging_list, has_next_page = client.series_pagingList(
+            series_id=series_id,
+            sort=sort, 
+            page=page, 
+            limit=limit
+        )
+    else:
+        console.print("[yellow]You are accessing site that using new version Comici[/]")
+        console.print("[yellow]This progress may take more time[/]")
+        paging_list, has_next_page = client.new_series_pagingList(
+            series_id=series_id,
+            sort=sort, 
+            page=page, 
+            limit=limit
+        )
+
+    
     table = Table(
         "Episode ID", 
         Column("Title", overflow="fold"), 
@@ -242,12 +267,12 @@ def episodes(
     for episode in paging_list:
         if bought_only:
             if not episode.href: continue
-            elif not episode.symbols[0].split("\n")[0] in ("閲覧期限", "無料", "今なら無料"):
+            elif not episode.symbols[0].split("\n")[0] in ACCESSABLE_SYMBOLS:
                 continue
         table.add_row(
             urlsplit(episode.href).path.rstrip("/").split("/")[-1] if episode.href else "-", 
             episode.title, 
-            ", ".join(episode.symbols), 
+            ", ".join(episode.symbols) if not hasattr(episode, "accessType") else episode.accessType, 
             episode.update_date, 
         )
     console.print(table)
@@ -316,34 +341,53 @@ def download_episode(
             return
     
     if len(episode_id) == 13:
-        comici_viewer_id = client.episodes(episode_id=episode_id)
+        comici_viewer_id, series_id = client.episodes(episode_id=episode_id)
         if not comici_viewer_id: 
             console.print(f"[red]Cannot access episode {episode_id}[/]")
             typer.Abort()
             return
         console.print(f"[green]Detected Episode ID: '{episode_id}'[/]")
     else:
+        series_id = ''
         comici_viewer_id = episode_id
         console.print(f"[green]Detected Comici Viewer ID: '{episode_id}'[/]")
-    episodes_info = client.book_episodeInfo(comici_viewer_id)
-    book_info = client.book_info(comici_viewer_id)
 
-    episode_infos = [episode for episode in episodes_info if episode._id == comici_viewer_id]
-    if not episode_infos: 
-        console.print("[red]Episode not found[/]")
-        typer.Abort()
-        return
-    
-    episode_info = episode_infos[0]
+    if not client.NEW_VERSION: 
+        episodes_info = client.book_episodeInfo(comici_viewer_id)
+        book_info = client.book_info(comici_viewer_id)
 
-    page_to = int(episode_info.page_count) if page_to < 0 or page_to > int(episode_info.page_count) else page_to
+        episode_infos = [episode for episode in episodes_info if episode._id == comici_viewer_id]
+        if not episode_infos: 
+            console.print("[red]Episode not found[/]")
+            typer.Abort()
+            return
+        
+        episode_info = episode_infos[0]
+
+        page_count = int(episode_info.page_count)
+    else:
+        if not series_id:
+            console.print("[red]New version Comici does not support Comici Viewer ID input[/]")
+            typer.Abort()
+            return
+        if not cookies and not client.user_id:
+            client.user_id, user_name = client.api_user_info()
+            time.sleep(0.1)
+            if not client.user_id or not user_name: 
+                console.print("[red]Cannot get user info[/]")
+                typer.Abort()
+                return
+        contents_info, page_count = client.book_contentsInfo(comici_viewer_id, 0, 0, client.user_id)
+        book_info, episode_info = client.new_book_info_and_episode_info(series_id, episode_index=-1, episode_id=episode_id)
+
+    page_to = page_count if page_to < 0 or page_to > page_count else page_to
     page_from = 0 if page_from < 0 or page_from > page_to else page_from
 
-    contents_info = client.book_contentsInfo(
+    contents_info, page_count = client.book_contentsInfo(
         comici_viewer_id, 
         page_from, 
         page_to, 
-        client.user_id if client.user_id else "0"
+        client.user_id.strip() if client.user_id.strip() else "0"
     )
 
     save_dir_path = pathlib.Path(save_dir)
@@ -439,13 +483,19 @@ def download_series(
     console.print(f"[green]Downloading series '{series_id}'[/]")
 
     page = 0
-    paging_list, has_next_page = client.series_pagingList(
+
+    if client.is_supported_version():
+        series_pagingList: Callable = client.series_pagingList
+    else:
+        series_pagingList: Callable = client.new_series_pagingList
+
+    paging_list, has_next_page = series_pagingList(
         series_id=series_id,
     )
 
     while has_next_page:
         page += 1
-        paging_list_cache, has_next_page = client.series_pagingList(
+        paging_list_cache, has_next_page = series_pagingList(
             series_id=series_id,
             page=page,
         )
@@ -454,7 +504,7 @@ def download_series(
     console.print(f"[green] Found {len(paging_list)} episodes[/]")
 
     for episode in paging_list:
-        if episode.href and episode.symbols[0].split("\n")[0] in ("閲覧期限", "無料", "今なら無料"):
+        if episode.href and episode.symbols[0].split("\n")[0] in ACCESSABLE_SYMBOLS:
             download_episode(
                 episode_id=urlsplit(episode.href).path.rstrip("/").split("/")[-1],
                 save_dir=save_dir,
