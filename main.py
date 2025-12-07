@@ -16,6 +16,19 @@ client = ComiciClient()
 ACCESSABLE_SYMBOLS = ("閲覧期限", "無料", "今なら無料", "HAS")
 
 @app.command()
+def user():
+    """Show infomation of your account"""
+    if client.NEW_VERSION:
+        user_id, user_name = client.api_popups()
+    else:
+        user_id, user_name = client.get_user_id_and_name()
+    if not user_id: 
+        console.print("[red]You are not logged in[/]")
+        return
+    console.print(f"[green]UserID: {user_id}, Name: {user_name}[/]")
+    console.print(f"[green]You are accessing site: {client.HOST} {'(NEW Comici+)' if client.NEW_VERSION else ''}[/]")
+
+@app.command()
 def sites():
     """All supported sites listed on https://comici.co.jp/business/comici-plus"""
     console.print(client.get_all_support_sites())
