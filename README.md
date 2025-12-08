@@ -26,6 +26,8 @@
 # 配置网站
 本工具基本支持所有基于Comici的漫画网站，需要各位手动设置自己想要使用的网站
 
+默认为 [コミックグロウル](https://comic-growl.com)
+
 * `main.py config set --host <HOST>`
 
 例如
@@ -36,6 +38,8 @@
 * [コミチ](https://comici.jp) 本家，仅支持搜索
 
 # 基本使用
+* `user`
+  * 检查Cookies是否有效
 * `search`
   * 查找漫画，得到Series ID (连载ID)
 * `episodes`
@@ -73,10 +77,12 @@ Comici提供的服务在中国大陆可以直接连接，不需要使用代理
 
 如果实在需要，请通过`main.py config set --proxy`设置代理
 
-# 多线程
-都随便爬了，对他们善良点吧！
+# 并发下载
+`download-episode`和`download-series`可以通过`--threads`参数设置并发下载
 
-暂时不打算支持
+默认为关闭，即`--threads 1`
+
+并发通过`asyncio`实现，所以其实不应该叫`--threads`（
 
 # 许可证
 MIT

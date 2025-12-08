@@ -375,7 +375,7 @@ def download_episode(
     wait_interval: float = typer.Option(0.5, min = 0, help="Wait interval between each page download"),
     ls_webp: bool = typer.Option(False, help="Use lossless WebP instead of PNG"),
     compression: int = typer.Option(1, min = 0, max = 9, help="Compression level, PNG max: 9, WebP max: 6"),
-    thread: int = typer.Option(1, min = 1, help="Download thread count"),
+    threads: int = typer.Option(1, min = 1, help="Download thread count"),
 ):
     global event_loop
     client_init()
@@ -446,7 +446,7 @@ def download_episode(
 
     filename_just = len(str(page_to)) + 1
 
-    client.SEMAPHORE = asyncio.Semaphore(thread)
+    client.SEMAPHORE = asyncio.Semaphore(threads)
 
     async def download(filepath: str, contents, episode_id: str):
         img = await client.get_and_descramble_image_async(contents, episode_id)
@@ -526,7 +526,7 @@ def download_series(
     ls_webp: bool = typer.Option(False, help="Use lossless WebP instead of PNG"),
     compression: int = typer.Option(1, min = 0, max = 9, help="Compression level, PNG max: 9, WebP max: 6"),
     allow_mismatch: bool = typer.Option(False, help="Allow mismatch hostname"),
-    thread: int = typer.Option(1, min = 1, help="Download thread count")
+    threads: int = typer.Option(1, min = 1, help="Download thread count")
 ):
     client_init()
     load_cookies(cookies)
@@ -582,7 +582,7 @@ def download_series(
                 compression=compression,
                 wait_interval=wait_interval,
                 overwrite = overwrite,
-                thread = thread
+                threads = threads
             )
             time.sleep(0.5)
         else:
