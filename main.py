@@ -13,6 +13,8 @@ app.add_typer(config.app, name="config")
 client: ComiciClient | None = None
 console = Console()
 
+event_loop = None
+
 ACCESSABLE_SYMBOLS = ("閲覧期限", "無料", "今なら無料", "HAS")
 
 def client_init():
@@ -375,6 +377,7 @@ def download_episode(
     compression: int = typer.Option(1, min = 0, max = 9, help="Compression level, PNG max: 9, WebP max: 6"),
     thread: int = typer.Option(1, min = 1, help="Download thread count"),
 ):
+    global event_loop
     client_init()
     load_cookies(cookies)
 
@@ -509,7 +512,8 @@ def download_episode(
         else:
             console.print(f"[green] Downloaded {page_to - page_from + 1} pages to '{save_dir_path}'[/]")
 
-    asyncio.run(donwloader())
+    event_loop = asyncio.get_event_loop()
+    event_loop.run_until_complete(donwloader())
 
 @app.command("download-series")
 def download_series(
@@ -586,3 +590,5 @@ def download_series(
 
 if __name__ == "__main__":
     app()
+    if event_loop:
+        event_loop.close()
