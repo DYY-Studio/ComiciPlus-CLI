@@ -501,6 +501,7 @@ def download_episode(
                         image.save(filepath, "WEBP", lossless=True, method=compression if compression <= 6 else 6)
                     else:
                         image.save(filepath, "PNG", compress_level=compression)
+                image.close()
 
         if cbz:
             cbz_file.close()
