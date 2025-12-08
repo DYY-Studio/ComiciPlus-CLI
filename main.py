@@ -40,6 +40,7 @@ def user():
 @app.command()
 def sites():
     """All supported sites listed on https://comici.co.jp/business/comici-plus"""
+    client_init()
     console.print(client.get_all_support_sites())
 
 @app.command()
