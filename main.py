@@ -446,7 +446,7 @@ def download_episode(
     client.SEMAPHORE = asyncio.Semaphore(thread)
 
     async def download(filepath: str, contents, episode_id: str):
-        img = client.get_and_descramble_image(contents, episode_id)
+        img = await client.get_and_descramble_image_async(contents, episode_id)
         await asyncio.sleep(wait_interval)
         return filepath, img
 
