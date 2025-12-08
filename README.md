@@ -73,7 +73,7 @@
 可以通过`--cookies`参数传入JSON文件路径，也可以通过`main.py config set --cookies`设置
 
 # 代理
-Comici提供的服务在中国大陆可以直接连接，不需要使用代理
+Comici提供的服务大多可以在中国大陆直接连接，不需要使用代理
 
 如果实在需要，请通过`main.py config set --proxy`设置代理
 
