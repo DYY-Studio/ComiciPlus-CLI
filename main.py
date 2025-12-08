@@ -59,6 +59,8 @@ def bookshelf(
     )
     if not results:
         console.print("[red]No results[/]")
+        typer.Abort()
+        return
     
     table = Table(
         "Series ID", 
@@ -91,6 +93,8 @@ def author(
     )
     if not results:
         console.print("[red]No results[/]")
+        typer.Abort()
+        return
 
     table = Table(
         "Series ID", 
@@ -191,6 +195,8 @@ def search(
         )
     if not results:
         console.print("[red]No results[/]")
+        typer.Abort()
+        return
     
     if _filter == "articles":
         table = Table(
