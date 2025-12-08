@@ -455,7 +455,7 @@ def download_episode(
             cbz_file_path = save_dir_path.parent / f"{getLegalPath(episode_info.name)}.cbz"
             cbz_file = zipfile.ZipFile(
                 str(cbz_file_path),
-                "a" if cbz_file_path.exists() else "w"
+                "a" if cbz_file_path.exists() and not overwrite else "w"
             )
 
         tasks = []
