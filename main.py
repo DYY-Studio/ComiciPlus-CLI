@@ -11,14 +11,20 @@ from rich.progress import track
 app = typer.Typer(rich_markup_mode="markdown")
 app.add_typer(config.app, name="config")
 
+client: ComiciClient | None = None
 console = Console()
-client = ComiciClient()
 
 ACCESSABLE_SYMBOLS = ("閲覧期限", "無料", "今なら無料", "HAS")
+
+def client_init():
+    global client
+    if not client:
+        client = ComiciClient()
 
 @app.command()
 def user():
     """Show infomation of your account"""
+    client_init()
     if client.NEW_VERSION:
         user_id, user_name = client.api_popups()
     else:
@@ -41,6 +47,7 @@ def bookshelf(
     bookshelf_type: Literal["", "favorite", "buying", "liking"] = typer.Option("", "--type", help="== [閲覧, お気に入り, レンタル, いいね]"),
     cookies: str = typer.Option("", help="Path to your cookies.json, should use Cookie-Editor JSON format"),
 ):
+    client_init()
     if cookies: 
         client.update_cookies_from_CookieEditorJson(cookies)
     results, has_next_page = client.api_bookshelf(
@@ -77,6 +84,7 @@ def author(
     page: int = typer.Option(0, min = 0, help="Page number when too many series to show"),
 ):
     """List series of a author by author_id, only some sites support this"""
+    client_init()
     results, has_next_page = client.author(
         author_id=author_id, 
         page=page
@@ -110,6 +118,7 @@ def series_list(
     page: int = typer.Option(0, min = 0, help="Page number when too many series to show"),
 ):
     """List all series on the site"""
+    client_init()
     results, has_next_page = client.series_list(
         sort=sort, 
         page=page,
@@ -163,6 +172,7 @@ def search(
         "series", "--filter", help="Filter type. Articles == Episodes"
     ),
 ):
+    client_init()
     if not client.NEW_VERSION: 
         results, has_next_page = client.search(
             keyword,
@@ -232,6 +242,7 @@ def search(
         console.print(f"[yellow]There are more results, use `--page {page+1}` and `--size` to show more[/]")
 
 def load_cookies(cookies: str = ""):
+    client_init()
     global client
     if cookies: 
         cookies = pathlib.Path(cookies)
@@ -257,6 +268,7 @@ def episodes(
 
     Series ID can be found by using `search` command
     """
+    client_init()
     load_cookies(cookies)
     
     if not client.NEW_VERSION: 
@@ -305,6 +317,7 @@ def detailed_episodes(episode_id: str):
     """
     Show detailed info of all episodes in the series, but need one of episode_id to request
     """
+    client_init()
     comici_viewer_id, series_id = client.episodes(episode_id=episode_id)
     if not comici_viewer_id: 
         console.print(f"[red]Cannot access episode {episode_id}[/]")
@@ -356,6 +369,7 @@ def download_episode(
     ls_webp: bool = typer.Option(False, help="Use lossless WebP instead of PNG"),
     compression: int = typer.Option(1, min = 0, max = 9, help="Compression level, PNG max: 9, WebP max: 6"),
 ):
+    client_init()
     load_cookies(cookies)
 
     if len(episode_id) not in (13, 32):
@@ -487,6 +501,7 @@ def download_series(
     compression: int = typer.Option(1, min = 0, max = 9, help="Compression level, PNG max: 9, WebP max: 6"),
     allow_mismatch: bool = typer.Option(False, help="Allow mismatch hostname"),
 ):
+    client_init()
     load_cookies(cookies)
 
     if len(series_id) != 13:
