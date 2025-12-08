@@ -483,7 +483,8 @@ def download_episode(
             )
 
         if tasks:
-            for task in track(asyncio.as_completed(tasks), f"Downloading '{episode_info.name}' of '{book_info.title}'\n", total=len(tasks)):
+            console.print(f"[yellow] Downloading '{episode_info.name}' ({len(contents_info)} Pages) of '{book_info.title}'[/]")
+            for task in track(asyncio.as_completed(tasks), "Please wait", total=len(tasks)):
                 filepath, image = await task
                 if cbz:
                     with cbz_file.open(filepath, "w") as f:
@@ -579,6 +580,7 @@ def download_series(
                 overwrite = overwrite,
                 thread = thread
             )
+            time.sleep(0.5)
         else:
             console.print(f"[yellow] Episode '{episode.title}' is not available for your account[/]")
 
