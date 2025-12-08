@@ -1,7 +1,6 @@
 from client import ComiciClient
 from utils import getLegalPath
-import typer, pathlib, time, config, zipfile
-from structs import Info, EpisodeInfo
+import typer, pathlib, time, config, zipfile, asyncio
 from typing import Callable, Literal
 from urllib.parse import urlsplit
 from rich.console import Console
@@ -374,6 +373,7 @@ def download_episode(
     wait_interval: float = typer.Option(0.5, min = 0, help="Wait interval between each page download"),
     ls_webp: bool = typer.Option(False, help="Use lossless WebP instead of PNG"),
     compression: int = typer.Option(1, min = 0, max = 9, help="Compression level, PNG max: 9, WebP max: 6"),
+    thread: int = typer.Option(1, min = 1, help="Download thread count"),
 ):
     client_init()
     load_cookies(cookies)
@@ -443,57 +443,72 @@ def download_episode(
 
     filename_just = len(str(page_to)) + 1
 
-    console.print(f"[green] Downloading episode '{episode_info.name}' of '{book_info.title}'[/]")
+    client.SEMAPHORE = asyncio.Semaphore(thread)
 
-    if cbz:
-        cbz_file_path = save_dir_path.parent / f"{getLegalPath(episode_info.name)}.cbz"
-        cbz_file = zipfile.ZipFile(
-            str(cbz_file_path),
-            "a" if cbz_file_path.exists() else "w"
-        )
+    async def download(filepath: str, contents, episode_id: str):
+        img = client.get_and_descramble_image(contents, episode_id)
+        await asyncio.sleep(wait_interval)
+        return filepath, img
 
-    for contents in track(contents_info):
-        filename = "{}.{}".format(
-            str(contents.sort + 1).rjust(filename_just, '0'),
-            "webp" if ls_webp else "png"
-        )
-
-        save_full_path = save_dir_path / filename
-        if save_full_path.exists():
-            if cbz:
-                if cbz_file.mode == "a":
-                    if filename in cbz_file.namelist(): continue
-                cbz_file.write(save_full_path, filename)
-                save_full_path.unlink(missing_ok=True)
-                continue
-            if not overwrite: continue
-        else:
-            if cbz and cbz_file.mode == "a" and filename in cbz_file.namelist(): continue
-
-        image = client.get_and_descramble_image(contents, episode_id)
+    async def donwloader():
         if cbz:
-            with cbz_file.open(filename, "w") as f:
-                if ls_webp:
-                    image.save(f, "WEBP", lossless=True, method=compression if compression <= 6 else 6)
-                else:
-                    image.save(f, "PNG", compress_level=compression)
-        else:
-            if ls_webp:
-                image.save(save_full_path, "WEBP", lossless=True, method=compression if compression <= 6 else 6)
-            else:
-                image.save(save_full_path, "PNG", compress_level=compression)
-        time.sleep(wait_interval)
+            cbz_file_path = save_dir_path.parent / f"{getLegalPath(episode_info.name)}.cbz"
+            cbz_file = zipfile.ZipFile(
+                str(cbz_file_path),
+                "a" if cbz_file_path.exists() else "w"
+            )
 
-    if cbz:
-        cbz_file.close()
-        if save_dir_path.exists(): 
-            try:
-                save_dir_path.rmdir()
-            except:
-                pass
-        console.print(f"[green] Downloaded {page_to - page_from + 1} pages to '{cbz_file_path}'[/]")
-    else:
-        console.print(f"[green] Downloaded {page_to - page_from + 1} pages to '{save_dir_path}'[/]")
+        tasks = []
+
+        for contents in contents_info:
+            filename = "{}.{}".format(
+                str(contents.sort + 1).rjust(filename_just, '0'),
+                "webp" if ls_webp else "png"
+            )
+
+            save_full_path = save_dir_path / filename
+            if save_full_path.exists():
+                if cbz:
+                    if cbz_file.mode == "a":
+                        if filename in cbz_file.namelist(): continue
+                    cbz_file.write(save_full_path, filename)
+                    save_full_path.unlink(missing_ok=True)
+                    continue
+                if not overwrite: continue
+            else:
+                if cbz and cbz_file.mode == "a" and filename in cbz_file.namelist(): continue
+
+            tasks.append(
+                asyncio.create_task(download(filename if cbz else save_full_path, contents, episode_id))
+            )
+
+        if tasks:
+            for task in track(asyncio.as_completed(tasks), f"Downloading '{episode_info.name}' of '{book_info.title}'\n", total=len(tasks)):
+                filepath, image = await task
+                if cbz:
+                    with cbz_file.open(filepath, "w") as f:
+                        if ls_webp:
+                            image.save(f, "WEBP", lossless=True, method=compression if compression <= 6 else 6)
+                        else:
+                            image.save(f, "PNG", compress_level=compression)
+                else:
+                    if ls_webp:
+                        image.save(filepath, "WEBP", lossless=True, method=compression if compression <= 6 else 6)
+                    else:
+                        image.save(filepath, "PNG", compress_level=compression)
+
+        if cbz:
+            cbz_file.close()
+            if save_dir_path.exists(): 
+                try:
+                    save_dir_path.rmdir()
+                except:
+                    pass
+            console.print(f"[green] Downloaded {page_to - page_from + 1} pages to '{cbz_file_path}'[/]")
+        else:
+            console.print(f"[green] Downloaded {page_to - page_from + 1} pages to '{save_dir_path}'[/]")
+
+    asyncio.run(donwloader())
 
 @app.command("download-series")
 def download_series(
@@ -506,6 +521,7 @@ def download_series(
     ls_webp: bool = typer.Option(False, help="Use lossless WebP instead of PNG"),
     compression: int = typer.Option(1, min = 0, max = 9, help="Compression level, PNG max: 9, WebP max: 6"),
     allow_mismatch: bool = typer.Option(False, help="Allow mismatch hostname"),
+    thread: int = typer.Option(1, min = 1, help="Download thread count")
 ):
     client_init()
     load_cookies(cookies)
@@ -560,7 +576,8 @@ def download_series(
                 ls_webp=ls_webp,
                 compression=compression,
                 wait_interval=wait_interval,
-                overwrite = overwrite
+                overwrite = overwrite,
+                thread = thread
             )
         else:
             console.print(f"[yellow] Episode '{episode.title}' is not available for your account[/]")

@@ -1,4 +1,4 @@
-import httpx, pathlib, json, math, io, datetime, sys, time
+import httpx, pathlib, json, math, io, datetime, sys, time, asyncio
 from typing import Literal
 from bs4 import BeautifulSoup as bs
 from urllib.parse import urljoin, urlsplit
@@ -8,6 +8,7 @@ from structs import *
 class ComiciClient:
     main_client: httpx.Client
     cdn_client: httpx.Client
+    async_cdn_client: httpx.AsyncClient
     user_id: int | None
 
     HOST = "https://comic-growl.com"
@@ -70,18 +71,25 @@ class ComiciClient:
         if host:
             self.HOST = "https://" + urlsplit(host).hostname
 
+        cdn_headers = {
+            "User-Agent": user_agent if user_agent else self.USER_AGENT_DEFAULT,
+            "sec-fetch-dest": "image",
+            "sec-fetch-mode": "cors",
+            "sec-fetch-site": "same-site",
+            "dnt": "1",
+            "sec-gpc": "1",
+            "priority": "u=5, i",
+            "te": "trailers",
+        }
         self.cdn_client = httpx.Client(
-            headers={
-                "User-Agent": user_agent if user_agent else self.USER_AGENT_DEFAULT,
-                "sec-fetch-dest": "image",
-                "sec-fetch-mode": "cors",
-                "sec-fetch-site": "same-site",
-                "dnt": "1",
-                "sec-gpc": "1",
-                "priority": "u=5, i",
-                "te": "trailers",
-            },
+            headers=cdn_headers,
             transport=httpx.HTTPTransport(retries=3),
+            proxy=proxy if proxy else self.PROXY_DEFAULT,
+        )
+
+        self.async_cdn_client = httpx.AsyncClient(
+            headers=cdn_headers,
+            transport=httpx.AsyncHTTPTransport(retries=3),
             proxy=proxy if proxy else self.PROXY_DEFAULT,
         )
 
@@ -871,3 +879,18 @@ class ComiciClient:
             response.content, 
             contentsInfo.scramble
         )
+    
+    SEMAPHORE = asyncio.Semaphore(1)
+    
+    async def get_and_descramble_image_async(self, contentsInfo: ContentsInfo, episode_id: str):
+        async with self.SEMAPHORE:
+            self.async_cdn_client.headers.update({
+                "Referer": urljoin(self.HOST, f"/episodes/{episode_id}/"),
+                "Origin": self.HOST,
+            })
+            response = await self.async_cdn_client.get(
+                contentsInfo.imageUrl
+            )
+            response.raise_for_status()
+
+            return await asyncio.to_thread(ComiciClient.descramble_image, response.content, contentsInfo.scramble)
